@@ -7,6 +7,7 @@ on:
     branches:
       - main
       - dev
+      - ccdev
   create:
   workflow_dispatch:
 
