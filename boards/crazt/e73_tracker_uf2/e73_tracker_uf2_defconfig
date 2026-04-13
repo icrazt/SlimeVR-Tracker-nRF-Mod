@@ -8,7 +8,9 @@ CONFIG_USB_DEVICE_STACK=y
 CONFIG_USB_DEVICE_MANUFACTURER="SlimeVR"
 CONFIG_USB_DEVICE_PRODUCT="SlimeNRF Tracker E73"
 
+# TODO： Uncertainty about the power regulator type used in the E73 tracker
 CONFIG_BATTERY_USE_REG_LDO_MAPPING=y
+# CONFIG_BATTERY_USE_REG_BUCK_MAPPING=y
 
 #generate for adafruit uf2 bootloader flashing
 CONFIG_BUILD_OUTPUT_UF2=y
