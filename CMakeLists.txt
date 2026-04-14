@@ -108,6 +108,7 @@ endif()
 
 set(SOFTDEVICE_HEX_52840 ${CMAKE_SOURCE_DIR}/softdevice/s140_nrf52_7.3.0_softdevice.hex)
 set(UF2_FAMILY_ID_52840 0xADA52840)
+set(ADAFRUIT_BOOTLOADER_HEX "" CACHE FILEPATH "Optional Adafruit bootloader hex to merge into a factory-programmable image")
 
 if(WITH_SOFTDEVICE)
   if(CONFIG_SOC_NRF52840)
@@ -134,6 +135,63 @@ if(WITH_SOFTDEVICE)
     )
 
     add_custom_target(sd_merged_uf2 ALL DEPENDS ${sd_merged_hex} ${sd_merged_uf2})
+  endif()
+endif()
+
+if(CONFIG_BUILD_OUTPUT_UF2)
+  if(CONFIG_SOC_NRF52840)
+    set(adafruit_settings_address 0xFF000)
+    set(adafruit_mbr_params_address 0xFE000)
+  elseif(CONFIG_SOC_NRF52833)
+    set(adafruit_settings_address 0x7F000)
+    set(adafruit_mbr_params_address 0x7E000)
+  endif()
+
+  if(DEFINED adafruit_settings_address)
+    set(app_image_hex ${CMAKE_BINARY_DIR}/zephyr/zephyr.hex)
+    set(swd_base_hex ${app_image_hex})
+    if(WITH_SOFTDEVICE)
+      set(swd_base_hex ${CMAKE_BINARY_DIR}/zephyr/zephyr_sd.hex)
+    endif()
+
+    set(adafruit_pages_hex ${CMAKE_BINARY_DIR}/zephyr/adafruit_bootloader_pages.hex)
+    set(swd_ready_hex ${CMAKE_BINARY_DIR}/zephyr/zephyr_swd.hex)
+    set(factory_ready_hex ${CMAKE_BINARY_DIR}/zephyr/zephyr_factory.hex)
+
+    add_custom_command(
+      OUTPUT ${adafruit_pages_hex} ${swd_ready_hex}
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/scripts/build/gen_adafruit_bootloader_pages.py
+              --app-hex ${app_image_hex}
+              --output-hex ${adafruit_pages_hex}
+              --app-start ${CONFIG_FLASH_LOAD_OFFSET}
+              --settings-address ${adafruit_settings_address}
+              --mbr-params-address ${adafruit_mbr_params_address}
+      COMMAND ${Python3_EXECUTABLE} ${ZEPHYR_BASE}/scripts/build/mergehex.py --overlap=replace -o ${swd_ready_hex} ${swd_base_hex} ${adafruit_pages_hex}
+      DEPENDS
+              ${app_image_hex}
+              ${swd_base_hex}
+              ${CMAKE_SOURCE_DIR}/scripts/build/gen_adafruit_bootloader_pages.py
+      VERBATIM
+    )
+
+    # Advertise the SWD-ready image as the preferred hex byproduct so sysbuild
+    # merges and flashes an image the Adafruit bootloader will accept.
+    set(BYPRODUCT_KERNEL_SIGNED_HEX_NAME "${swd_ready_hex}"
+        CACHE FILEPATH "SWD-ready kernel hex file" FORCE
+    )
+
+    add_custom_target(swd_ready_hex ALL DEPENDS ${adafruit_pages_hex} ${swd_ready_hex})
+
+    if(ADAFRUIT_BOOTLOADER_HEX AND EXISTS ${ADAFRUIT_BOOTLOADER_HEX})
+      add_custom_command(
+        OUTPUT ${factory_ready_hex}
+        COMMAND ${Python3_EXECUTABLE} ${ZEPHYR_BASE}/scripts/build/mergehex.py --overlap=replace -o ${factory_ready_hex} ${ADAFRUIT_BOOTLOADER_HEX} ${swd_ready_hex}
+        DEPENDS ${swd_ready_hex} ${ADAFRUIT_BOOTLOADER_HEX}
+        VERBATIM
+      )
+
+      add_custom_target(factory_ready_hex ALL DEPENDS ${factory_ready_hex})
+    endif()
   endif()
 endif()
 
