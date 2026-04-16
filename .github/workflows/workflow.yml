@@ -19,6 +19,7 @@ permissions: write-all
 
 env:
   ZEPHYR_SDK_VERSION: "0.17.4"
+  BLE_OTA_DEV_TYPE: "0x0052"
 
 jobs:
   setup:
@@ -141,14 +142,14 @@ jobs:
         uses: actions/cache@v5
         with:
           path: ~/.venv
-          key: venv-pip-${{ env.ZEPHYR_SDK_VERSION }}-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt') }}
+          key: venv-pip-${{ env.ZEPHYR_SDK_VERSION }}-ota-v1-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt') }}
 
       - name: 🐍 Install Zephyr Python Requirements
         id: install-pip
         if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |
           cd zephyr-workspace
-          ~/.venv/bin/pip install -r zephyr/scripts/requirements.txt
+          ~/.venv/bin/pip install -r zephyr/scripts/requirements.txt adafruit-nrfutil
 
       - name: 📦 Cache Repository
         id: cache-repository
@@ -251,8 +252,9 @@ jobs:
         uses: actions/cache/restore@v5
         with:
           path: ~/.venv
-          key: venv-pip-${{ env.ZEPHYR_SDK_VERSION }}-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt') }}
+          key: venv-pip-${{ env.ZEPHYR_SDK_VERSION }}-ota-v1-${{ hashFiles('zephyr-workspace/zephyr/scripts/requirements.txt') }}
           restore-keys: |
+            venv-pip-${{ env.ZEPHYR_SDK_VERSION }}-ota-v1-
             venv-pip-
             venv-
           fail-on-cache-miss: true
@@ -264,6 +266,16 @@ jobs:
           export PATH="$HOME/.venv/bin:$PATH"
           cd zephyr-workspace
           west zephyr-export
+
+      - name: Ensure BLE OTA Packager
+        id: ensure-ota-packager
+        if: ${{ matrix.boards.with_softdevice == true }}
+        run: |
+          export PATH="$HOME/.venv/bin:$PATH"
+          if ! adafruit-nrfutil --help >/dev/null 2>&1; then
+            ~/.venv/bin/pip install adafruit-nrfutil
+          fi
+          adafruit-nrfutil --help >/dev/null
 
       - name: 📦 Restore Repository
         id: restore-repository
@@ -302,6 +314,18 @@ jobs:
               "${EXTRA_CMAKE_ARGS[@]}"
 
           if [ "${{ matrix.boards.with_softdevice }}" = "true" ]; then
+            ota_hex="$REPO_DIR/build/$REPO_DIR/zephyr/zephyr.hex"
+            ota_zip="Releases/${{ matrix.boards.filename }}_OTA.zip"
+            if [ -f "$ota_hex" ]; then
+              adafruit-nrfutil dfu genpkg \
+                --dev-type "${{ env.BLE_OTA_DEV_TYPE }}" \
+                --application "$ota_hex" \
+                "$ota_zip"
+              echo "Saved: $ota_zip"
+            else
+              echo "Not found (skip BLE OTA zip): $ota_hex"
+            fi
+
             for artifact in \
               "zephyr.hex:${{ matrix.boards.filename }}_OTA.hex" \
               "zephyr_sd.hex:${{ matrix.boards.filename }}.hex" \
