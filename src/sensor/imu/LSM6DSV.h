@@ -5,6 +5,7 @@
 
 // https://www.st.com/resource/en/datasheet/lsm6dsv.pdf
 #define LSM6DSV_WHO_AM_I                   0x0F
+#define LSM6DSV_PIN_CTRL                   0x02
 #define LSM6DSV_IF_CFG                     0x03
 
 #define LSM6DSV_FIFO_CTRL1                 0x07  // FIFO watermark threshold [7:0]

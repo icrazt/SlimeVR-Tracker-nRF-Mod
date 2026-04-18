@@ -8,6 +8,7 @@ on:
       - main
       - dev
       - ccdev
+      - ccdev-*
   create:
   workflow_dispatch:
 

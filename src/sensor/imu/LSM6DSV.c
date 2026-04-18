@@ -193,6 +193,35 @@ void lsm_shutdown(void)
 		LOG_ERR("Communication error");
 }
 
+// LSM6DSV-specific shutdown: SW_RESET + configure the chip for minimum leakage in system-off.
+// Datasheet typ. Power-Down current is ~2.6 µA once accel and gyro ODR are both 0.
+// SW_RESET already puts CTRL1/CTRL2 to 0x00 (power-down), so the remaining work is turning
+// off the unused I2C/I3C/OIS interfaces and their internal pull-ups so the pads don't leak.
+// Not reused for LSM6DSO/DSM because register 0x02 / 0x03 bit layouts are chip-specific.
+void lsm6dsv_shutdown(void)
+{
+	lsm_shutdown(); // SW_RESET + software state cleanup; puts XL/G into Power-Down (ODR=0)
+
+	// IF_CFG (0x03): I2C_I3C_disable=1 to shut down the I2C/I3C hardware logic;
+	// SDA_PU_EN (bit7) and SHUB_PU_EN (bit6) cleared so no current flows through
+	// the internal pull-ups on SDA / auxiliary I2C when the bus is idle at system-off.
+	uint8_t if_cfg = 0;
+	int err = ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, &if_cfg);
+	if_cfg = (if_cfg | 0x02) & 0x3F;
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, if_cfg);
+
+	// PIN_CTRL (0x02): OIS_PU_DIS=1 disconnects the OCS_Aux / SDO_Aux pull-ups;
+	// SDO_PU_EN (bit6) cleared so the primary SDO pin has no internal pull-up either.
+	// Reserved bits [5:0] must be preserved — read-modify-write.
+	uint8_t pin_ctrl = 0;
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, &pin_ctrl);
+	pin_ctrl = (pin_ctrl | 0x80) & 0xBF;
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, pin_ctrl);
+
+	if (err)
+		LOG_ERR("Communication error");
+}
+
 void lsm_update_fs(float accel_range, float gyro_range, float *accel_actual_range, float *gyro_actual_range)
 {
 	if (accel_range > 8)
@@ -760,7 +789,7 @@ int lsm_ext_write_read(const uint8_t addr, const void *write_buf, size_t num_wri
 
 const sensor_imu_t sensor_imu_lsm6dsv = {
 	lsm_init,
-	lsm_shutdown,
+	lsm6dsv_shutdown,
 
 	lsm_update_fs,
 	lsm_update_odr,
