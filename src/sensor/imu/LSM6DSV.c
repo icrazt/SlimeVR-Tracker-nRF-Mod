@@ -200,26 +200,49 @@ void lsm_shutdown(void)
 // Not reused for LSM6DSO/DSM because register 0x02 / 0x03 bit layouts are chip-specific.
 void lsm6dsv_shutdown(void)
 {
+	LOG_INF("lsm6dsv_shutdown: entering low-power power-down");
+
+	// Defensive: explicitly stop sensor-hub I2C master before SW_RESET.
+	// SW_RESET will reset it anyway, but a running master can cause brief
+	// bus activity that defeats the leakage-reduction goal.
+	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNC_CFG_ACCESS, 0x40);
+	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_MASTER_CONFIG, 0x00);
+	ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNC_CFG_ACCESS, 0x00);
+
 	lsm_shutdown(); // SW_RESET + software state cleanup; puts XL/G into Power-Down (ODR=0)
+
+	// Defensive: write ODR=0 explicitly in case SW_RESET timing is marginal.
+	// After this, CTRL1/CTRL2 bits [7:4]=OP_MODE, [3:0]=ODR, both 0 → Power-Down.
+	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL1, 0x00);
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL2, 0x00);
 
 	// IF_CFG (0x03): I2C_I3C_disable=1 to shut down the I2C/I3C hardware logic;
 	// SDA_PU_EN (bit7) and SHUB_PU_EN (bit6) cleared so no current flows through
 	// the internal pull-ups on SDA / auxiliary I2C when the bus is idle at system-off.
-	uint8_t if_cfg = 0;
-	int err = ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, &if_cfg);
-	if_cfg = (if_cfg | 0x02) & 0x3F;
+	uint8_t if_cfg_before = 0;
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, &if_cfg_before);
+	uint8_t if_cfg = (if_cfg_before | 0x02) & 0x3F;
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, if_cfg);
 
 	// PIN_CTRL (0x02): OIS_PU_DIS=1 disconnects the OCS_Aux / SDO_Aux pull-ups;
 	// SDO_PU_EN (bit6) cleared so the primary SDO pin has no internal pull-up either.
 	// Reserved bits [5:0] must be preserved — read-modify-write.
-	uint8_t pin_ctrl = 0;
-	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, &pin_ctrl);
-	pin_ctrl = (pin_ctrl | 0x80) & 0xBF;
+	uint8_t pin_ctrl_before = 0;
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, &pin_ctrl_before);
+	uint8_t pin_ctrl = (pin_ctrl_before | 0x80) & 0xBF;
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, pin_ctrl);
 
+	// Readback to confirm the writes took effect over SPI.
+	uint8_t ctrl1 = 0xFF, ctrl2 = 0xFF, if_cfg_rb = 0xFF, pin_ctrl_rb = 0xFF;
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL1, &ctrl1);
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL2, &ctrl2);
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, &if_cfg_rb);
+	err |= ssi_reg_read_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_PIN_CTRL, &pin_ctrl_rb);
+	LOG_INF("lsm6dsv_shutdown: CTRL1=0x%02X CTRL2=0x%02X IF_CFG=0x%02X (was 0x%02X, wrote 0x%02X) PIN_CTRL=0x%02X (was 0x%02X, wrote 0x%02X)",
+		ctrl1, ctrl2, if_cfg_rb, if_cfg_before, if_cfg, pin_ctrl_rb, pin_ctrl_before, pin_ctrl);
+
 	if (err)
-		LOG_ERR("Communication error");
+		LOG_ERR("lsm6dsv_shutdown: SPI communication error");
 }
 
 void lsm_update_fs(float accel_range, float gyro_range, float *accel_actual_range, float *gyro_actual_range)
