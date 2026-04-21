@@ -1,7 +1,6 @@
-// Copyright (c) 2026
-// SPDX-License-Identifier: Apache-2.0
+/* Copyright (c) 2026 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
-/dts-v1/;
 #include <nordic/nrf52840_qiaa.dtsi>
 
 &pinctrl {
@@ -38,8 +37,8 @@
 };
 
 / {
-	model = "e73_tracker_dev";
-	compatible = "e73_tracker_dev";
+	model = "e73_tracker";
+	compatible = "e73_tracker";
 
 	chosen {
 		zephyr,sram = &sram0;

@@ -1,4 +1,4 @@
-# Copyright (c) 2024 Nordic Semiconductor ASA
+# Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
 board_runner_args(jlink "--device=nrf52840_xxaa" "--speed=4000")

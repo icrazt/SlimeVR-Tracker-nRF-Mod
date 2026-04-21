@@ -2,7 +2,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 board:
-  name: e73_tracker_dev
+  name: e73_tracker
   vendor: crazt
   socs:
     - name: nrf52840
+      variants:
+      - name: 'dev'
+      - name: 'uf2'

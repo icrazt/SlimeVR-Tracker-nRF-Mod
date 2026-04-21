@@ -1,0 +1,17 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+config BOARD_E73_TRACKER
+	select SOC_NRF52840_QIAA
+
+# Compatibility symbols kept so the top-level CMakeLists.txt guard
+# (CONFIG_BOARD_E73_TRACKER_DEV && WITH_SOFTDEVICE => FATAL_ERROR) keeps
+# working without modification. Driven by Zephyr's auto-generated
+# CONFIG_BOARD_<TARGET>=y.
+config BOARD_E73_TRACKER_DEV
+	bool
+	default y if BOARD_E73_TRACKER_NRF52840_DEV
+
+config BOARD_E73_TRACKER_UF2
+	bool
+	default y if BOARD_E73_TRACKER_NRF52840_UF2
