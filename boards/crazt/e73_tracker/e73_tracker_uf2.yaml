@@ -1,7 +1,7 @@
-# Copyright (c) 2024 Nordic Semiconductor ASA
+# Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
-identifier: e73_tracker_uf2
+identifier: e73_tracker/nrf52840/uf2
 name: e73_tracker_uf2
 vendor: crazt
 type: mcu

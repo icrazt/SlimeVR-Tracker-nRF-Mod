@@ -1,7 +1,6 @@
-// Copyright (c) 2024 Nordic Semiconductor ASA
-// SPDX-License-Identifier: Apache-2.0
+/* Copyright (c) 2026 */
+/* SPDX-License-Identifier: Apache-2.0 */
 
-/dts-v1/;
 #include <nordic/nrf52840_qiaa.dtsi>
 
 &pinctrl {
@@ -22,24 +21,24 @@
 	spi3_default: spi3_default {
 		group1 {
 			psels = <NRF_PSEL(SPIM_MISO, 0, 13)>,
-					<NRF_PSEL(SPIM_MOSI, 0, 24)>,
-					<NRF_PSEL(SPIM_SCK, 0, 22)>;
+				<NRF_PSEL(SPIM_MOSI, 0, 24)>,
+				<NRF_PSEL(SPIM_SCK, 0, 22)>;
 		};
 	};
 
 	spi3_sleep: spi3_sleep {
 		group1 {
 			psels = <NRF_PSEL(SPIM_MISO, 0, 13)>,
-					<NRF_PSEL(SPIM_MOSI, 0, 24)>,
-					<NRF_PSEL(SPIM_SCK, 0, 22)>;
+				<NRF_PSEL(SPIM_MOSI, 0, 24)>,
+				<NRF_PSEL(SPIM_SCK, 0, 22)>;
 			low-power-enable;
 		};
 	};
 };
 
 / {
-	model = "e73_tracker_uf2";
-	compatible = "e73_tracker_uf2";
+	model = "e73_tracker";
+	compatible = "e73_tracker";
 
 	chosen {
 		zephyr,sram = &sram0;
@@ -80,7 +79,6 @@
 		int0-gpios = <&gpio0 2 0>;
 		led-gpios = <&gpio0 15 GPIO_OPEN_SOURCE>;
 	};
-
 };
 
 &reg0 {
