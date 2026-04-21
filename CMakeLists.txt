@@ -109,12 +109,6 @@ endif()
 set(SOFTDEVICE_HEX_52840 ${CMAKE_SOURCE_DIR}/softdevice/s140_nrf52_7.3.0_softdevice.hex)
 set(UF2_FAMILY_ID_52840 0xADA52840)
 
-if(CONFIG_BOARD_E73_TRACKER_DEV AND WITH_SOFTDEVICE)
-  message(FATAL_ERROR
-    "e73_tracker_dev is for no-bootloader app-at-0x0 J-Link debugging; use e73_tracker_uf2 for SoftDevice/UF2 release builds"
-  )
-endif()
-
 if(WITH_SOFTDEVICE)
   if(CONFIG_SOC_NRF52840)
     set(sd_softdevice_hex ${SOFTDEVICE_HEX_52840})
