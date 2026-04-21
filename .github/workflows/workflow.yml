@@ -8,6 +8,7 @@ on:
       - main
       - dev
       - ccdev
+      - board_debug
   create:
   workflow_dispatch:
 
