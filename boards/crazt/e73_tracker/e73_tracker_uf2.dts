@@ -1,0 +1,10 @@
+// Copyright (c) 2026
+// SPDX-License-Identifier: Apache-2.0
+
+/dts-v1/;
+#include "e73_tracker.dts"
+
+/ {
+	model = "e73_tracker_uf2";
+	compatible = "e73_tracker_uf2";
+};

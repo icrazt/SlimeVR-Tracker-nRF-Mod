@@ -1,8 +1,0 @@
-# Copyright (c) 2026
-# SPDX-License-Identifier: Apache-2.0
-
-board:
-  name: e73_tracker_dev
-  vendor: crazt
-  socs:
-    - name: nrf52840

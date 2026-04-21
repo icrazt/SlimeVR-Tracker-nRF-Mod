@@ -1,8 +1,8 @@
 # Copyright (c) 2026
 # SPDX-License-Identifier: Apache-2.0
 
-identifier: e73_tracker_dev
-name: e73_tracker_dev
+identifier: e73_tracker
+name: e73_tracker
 vendor: crazt
 type: mcu
 arch: arm

@@ -109,9 +109,17 @@ endif()
 set(SOFTDEVICE_HEX_52840 ${CMAKE_SOURCE_DIR}/softdevice/s140_nrf52_7.3.0_softdevice.hex)
 set(UF2_FAMILY_ID_52840 0xADA52840)
 
-if(CONFIG_BOARD_E73_TRACKER_DEV AND WITH_SOFTDEVICE)
+set(e73_tracker_uf2_variant FALSE)
+if(DEFINED CONFIG_BOARD_TARGET AND CONFIG_BOARD_TARGET MATCHES "/uf2$")
+  set(e73_tracker_uf2_variant TRUE)
+endif()
+if(DEFINED BOARD_QUALIFIERS AND BOARD_QUALIFIERS MATCHES "(^|/)uf2($|/)")
+  set(e73_tracker_uf2_variant TRUE)
+endif()
+
+if(CONFIG_BOARD_E73_TRACKER AND NOT e73_tracker_uf2_variant AND WITH_SOFTDEVICE)
   message(FATAL_ERROR
-    "e73_tracker_dev is for no-bootloader app-at-0x0 J-Link debugging; use e73_tracker_uf2 for SoftDevice/UF2 release builds"
+    "e73_tracker is for no-bootloader app-at-0x0 J-Link debugging; use e73_tracker/nrf52840/uf2 for SoftDevice/UF2 release builds"
   )
 endif()
 
