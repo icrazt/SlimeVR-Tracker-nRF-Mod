@@ -122,6 +122,22 @@ static uint32_t nrf_psel_to_gpio_pin(uint32_t psel)
 	return psel & NRF_PSEL_GPIO_PIN_MASK;
 }
 
+#if defined(PWR_EXISTS) || defined(VCC_EXISTS)
+static void sys_sensor_power_gpio_off(const char *name, uint32_t pin)
+{
+	LOG_INF("%s GPIO pin: %u", name, pin);
+	nrf_gpio_cfg(
+		pin,
+		NRF_GPIO_PIN_DIR_INPUT,
+		NRF_GPIO_PIN_INPUT_DISCONNECT,
+		NRF_GPIO_PIN_PULLDOWN,
+		NRF_GPIO_PIN_S0S1,
+		NRF_GPIO_PIN_NOSENSE
+	);
+	LOG_INF("Disabled %s GPIO", name);
+}
+#endif
+
 static void sys_disconnect_interface_pins(void)
 {
 	// interface pins are disconnected according to devicetree, so only need to disconnect any cs pins
@@ -143,18 +159,15 @@ static void sys_disconnect_interface_pins(void)
 	}
 #endif
 /*
-	TODO: for promicro, leaving ext_vcc on draws ~50uA, disconnect works, pulldown may be more reliable
-	what to do about boards that use ext_vcc? it is not expected to leave on during WOM
+	Some boards source external sensor power from these GPIOs. Keep them from
+	sourcing current while nRF is in system off, and weakly discharge the external
+	rail so an IMU cannot stay powered through a floating supply pin.
 */
 #if PWR_EXISTS
-	LOG_INF("Power GPIO pin: %u", pwr.pin);
-	nrf_gpio_cfg_default(pwr.pin);
-	LOG_INF("Disconnected power GPIO");
+	sys_sensor_power_gpio_off("Power", NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, pwr_gpios));
 #endif
 #if VCC_EXISTS
-	LOG_INF("VCC GPIO pin: %u", vcc.pin);
-	nrf_gpio_cfg_default(vcc.pin);
-	LOG_INF("Disconnected VCC GPIO");
+	sys_sensor_power_gpio_off("VCC", NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, vcc_gpios));
 #endif
 }
 
