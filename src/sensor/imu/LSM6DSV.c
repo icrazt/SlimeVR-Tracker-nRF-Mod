@@ -211,6 +211,11 @@ static int lsm_enter_power_down(void)
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNC_CFG_ACCESS, 0x00); // switch to normal registers
 	k_usleep(350);
 
+	err |= ssi_reg_write_byte(
+		SENSOR_INTERFACE_DEV_IMU,
+		LSM6DSV_PIN_CTRL,
+		LSM6DSV_PIN_CTRL_OIS_PU_DIS | LSM6DSV_PIN_CTRL_IBHR_POR_EN | LSM6DSV_PIN_CTRL_MUST_BE_ONE
+	); // disable OCS_Aux/SDO_Aux pull-ups while preserving required bits
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, 0x00); // disable auxiliary I2C pull-ups
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_INT1_CTRL, 0x00); // disable FIFO/BDR interrupt routing
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_MD1_CFG, 0x00); // clear wake routing

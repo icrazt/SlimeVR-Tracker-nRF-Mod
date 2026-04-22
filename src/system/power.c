@@ -10,6 +10,7 @@
 #include "watchdog.h"
 
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/drivers/spi.h>
 #include <zephyr/logging/log_ctrl.h>
 #include <zephyr/sys/poweroff.h>
 #include <zephyr/sys/reboot.h>
@@ -108,22 +109,38 @@ static const struct gpio_dt_spec vcc = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, vcc_gp
 #endif
 
 #define ADAFRUIT_BOOTLOADER CONFIG_BUILD_OUTPUT_UF2
+#define NRF_PSEL_DISCONNECTED_MASK (1UL << 31)
+#define NRF_PSEL_GPIO_PIN_MASK 0xFFUL
+
+static bool nrf_psel_is_connected(uint32_t psel)
+{
+	return (psel & NRF_PSEL_DISCONNECTED_MASK) == 0;
+}
+
+static uint32_t nrf_psel_to_gpio_pin(uint32_t psel)
+{
+	return psel & NRF_PSEL_GPIO_PIN_MASK;
+}
 
 static void sys_disconnect_interface_pins(void)
 {
 	// interface pins are disconnected according to devicetree, so only need to disconnect any cs pins
 	// int pin already configured by power off
 #if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(imu_spi))
-	uint32_t imu_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(imu_spi));
-	LOG_INF("IMU CS GPIO pin: %u", imu_cs_gpios);
-	nrf_gpio_cfg_default(imu_cs_gpios);
-	LOG_INF("Disconnected IMU CS GPIO");
+	const struct gpio_dt_spec imu_cs = SPI_CS_GPIOS_DT_SPEC_GET(DT_NODELABEL(imu_spi));
+	LOG_INF("IMU CS GPIO pin: %u", imu_cs.pin);
+	if (device_is_ready(imu_cs.port)) {
+		gpio_pin_configure_dt(&imu_cs, GPIO_DISCONNECTED);
+		LOG_INF("Disconnected IMU CS GPIO");
+	}
 #endif
 #if DT_SPI_DEV_HAS_CS_GPIOS(DT_NODELABEL(mag_spi))
-	uint32_t mag_cs_gpios = DT_SPI_DEV_CS_GPIOS_PIN(DT_NODELABEL(mag_spi)));
-	LOG_INF("Magnetometer CS GPIO pin: %u", mag_cs_gpios);
-	nrf_gpio_cfg_default(mag_cs_gpios);
-	LOG_INF("Disconnected Magnetometer CS GPIO");
+	const struct gpio_dt_spec mag_cs = SPI_CS_GPIOS_DT_SPEC_GET(DT_NODELABEL(mag_spi));
+	LOG_INF("Magnetometer CS GPIO pin: %u", mag_cs.pin);
+	if (device_is_ready(mag_cs.port)) {
+		gpio_pin_configure_dt(&mag_cs, GPIO_DISCONNECTED);
+		LOG_INF("Disconnected Magnetometer CS GPIO");
+	}
 #endif
 /*
 	TODO: for promicro, leaving ext_vcc on draws ~50uA, disconnect works, pulldown may be more reliable
@@ -243,14 +260,14 @@ static void disconnect_sensor_pins(void)
 		uint32_t scl_pin = twim->PSEL.SCL;
 		uint32_t sda_pin = twim->PSEL.SDA;
 
-		if (!(scl_pin & (1UL << 31))) {
-			uint32_t scl_pin_num = scl_pin & 0x1F;
+		if (nrf_psel_is_connected(scl_pin)) {
+			uint32_t scl_pin_num = nrf_psel_to_gpio_pin(scl_pin);
 			nrf_gpio_cfg_default(scl_pin_num);
 			LOG_INF("Disconnected I2C SCL pin %u", scl_pin_num);
 		}
 
-		if (!(sda_pin & (1UL << 31))) {
-			uint32_t sda_pin_num = sda_pin & 0x1F;
+		if (nrf_psel_is_connected(sda_pin)) {
+			uint32_t sda_pin_num = nrf_psel_to_gpio_pin(sda_pin);
 			nrf_gpio_cfg_default(sda_pin_num);
 			LOG_INF("Disconnected I2C SDA pin %u", sda_pin_num);
 		}
@@ -265,20 +282,20 @@ static void disconnect_sensor_pins(void)
 		uint32_t mosi_pin = spim->PSEL.MOSI;
 		uint32_t miso_pin = spim->PSEL.MISO;
 
-		if (!(sck_pin & (1UL << 31))) {
-			uint32_t sck_pin_num = sck_pin & 0x1F;
+		if (nrf_psel_is_connected(sck_pin)) {
+			uint32_t sck_pin_num = nrf_psel_to_gpio_pin(sck_pin);
 			nrf_gpio_cfg_default(sck_pin_num);
 			LOG_INF("Disconnected SPI SCK pin %u", sck_pin_num);
 		}
 
-		if (!(mosi_pin & (1UL << 31))) {
-			uint32_t mosi_pin_num = mosi_pin & 0x1F;
+		if (nrf_psel_is_connected(mosi_pin)) {
+			uint32_t mosi_pin_num = nrf_psel_to_gpio_pin(mosi_pin);
 			nrf_gpio_cfg_default(mosi_pin_num);
 			LOG_INF("Disconnected SPI MOSI pin %u", mosi_pin_num);
 		}
 
-		if (!(miso_pin & (1UL << 31))) {
-			uint32_t miso_pin_num = miso_pin & 0x1F;
+		if (nrf_psel_is_connected(miso_pin)) {
+			uint32_t miso_pin_num = nrf_psel_to_gpio_pin(miso_pin);
 			nrf_gpio_cfg_default(miso_pin_num);
 			LOG_INF("Disconnected SPI MISO pin %u", miso_pin_num);
 		}

@@ -5,6 +5,7 @@
 
 // https://www.st.com/resource/en/datasheet/lsm6dsv.pdf
 #define LSM6DSV_WHO_AM_I                   0x0F
+#define LSM6DSV_PIN_CTRL                   0x02
 #define LSM6DSV_IF_CFG                     0x03
 
 #define LSM6DSV_FIFO_CTRL1                 0x07  // FIFO watermark threshold [7:0]
@@ -84,6 +85,10 @@
 #define LSM6DSV_SLV0_CONFIG                0x17
 #define LSM6DSV_DATAWRITE_SLV0             0x21
 #define LSM6DSV_STATUS_MASTER              0x22
+
+#define LSM6DSV_PIN_CTRL_OIS_PU_DIS        0x80
+#define LSM6DSV_PIN_CTRL_IBHR_POR_EN       0x20
+#define LSM6DSV_PIN_CTRL_MUST_BE_ONE       0x03
 
 // Same for XL and G
 #define ODR_OFF     0x00
