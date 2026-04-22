@@ -58,6 +58,7 @@ static uint8_t ext_cont_addr = 0;
 static uint8_t ext_cont_sub = 0;
 static uint8_t ext_cont_len = 0;
 static void lsm_ext_stop_continuous(void);
+static int lsm_enter_power_down(void);
 
 // Scanning mode: when true, one-shot reads never start continuous mode.
 // Set during ext_setup() for device scanning, cleared by lsm_init() for normal operation.
@@ -183,14 +184,43 @@ int lsm_init(float clock_rate, float accel_time, float gyro_time, float *accel_a
 
 void lsm_shutdown(void)
 {
-	ext_continuous_active = false;
 	lsm_unknown_tag_count = 0;
+	last_accel_mode = 0xff;
+	last_gyro_mode = 0xff;
 	last_accel_odr = 0xff; // reset last odr
 	last_gyro_odr = 0xff; // reset last odr
-	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL3, 0x01); // SW_RESET
+
+	int err = lsm_enter_power_down();
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL3, 0x01); // SW_RESET
 	k_msleep(2); // Wait for reset to complete before the next init path continues
+
+	// SW_RESET should leave both sensors powered down by default; write it
+	// explicitly so SYS OFF never relies only on reset defaults.
+	err |= lsm_enter_power_down();
 	if (err)
 		LOG_ERR("Communication error");
+}
+
+static int lsm_enter_power_down(void)
+{
+	lsm_unknown_tag_count = 0;
+	ext_continuous_active = false;
+
+	int err = ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNC_CFG_ACCESS, 0x40); // switch to sensor hub registers
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_MASTER_CONFIG, 0x00); // disable auxiliary I2C master
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNC_CFG_ACCESS, 0x00); // switch to normal registers
+	k_usleep(350);
+
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, 0x00); // disable auxiliary I2C pull-ups
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_INT1_CTRL, 0x00); // disable FIFO/BDR interrupt routing
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_MD1_CFG, 0x00); // clear wake routing
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNCTIONS_ENABLE, 0x00); // disable embedded interrupts
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FIFO_CTRL3, 0x00); // stop FIFO batching for accel/gyro
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FIFO_CTRL4, LSM6DSV_FIFO_MODE_BYPASS); // flush FIFO / disable streaming
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL1, (OP_MODE_XL_HP << 4) | ODR_OFF); // accel power-down
+	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL2, (OP_MODE_G_HP << 4) | ODR_OFF); // gyro power-down
+
+	return err;
 }
 
 void lsm_update_fs(float accel_range, float gyro_range, float *accel_actual_range, float *gyro_actual_range)
