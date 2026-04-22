@@ -1,0 +1,34 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "E73: RTT Viewer (nRF52840 fixed)",
+            "type": "process",
+            "command": "C:\\Program Files\\SEGGER\\JLink_V924a\\JLinkRTTViewer.exe",
+            "linux": {
+                "command": "JLinkRTTViewer"
+            },
+            "osx": {
+                "command": "JLinkRTTViewer"
+            },
+            "args": [
+                "--device",
+                "NRF52840_XXAA",
+                "--connection",
+                "usb",
+                "--interface",
+                "swd",
+                "--speed",
+                "4000",
+                "--autoconnect",
+                "--setwindowtitle",
+                "E73 Tracker RTT"
+            ],
+            "problemMatcher": [],
+            "presentation": {
+                "reveal": "silent",
+                "panel": "dedicated"
+            }
+        }
+    ]
+}

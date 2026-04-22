@@ -60,6 +60,24 @@ nrfjprog --recover
 - `Attach`: 只附加到已经在运行的固件，不重新烧录。
 - `RTT Terminal`: 查看 RTT 日志。
 
+### 固化 RTT 芯片选择
+
+仓库里的 [board.cmake](../boards/crazt/e73_tracker/board.cmake) 已经给 Zephyr/west 的 J-Link runner 固化了 `--device=nrf52840_xxaa` 和 `--speed=4000`，所以 `west flash`、`west debug`、`west attach` 这条链路不需要手动选择芯片。
+
+nRF Terminal 或独立 SEGGER RTT Viewer 属于另一条链路：它是单独打开 J-Link/RTT 连接，不会稳定继承 west runner 参数，所以仍可能弹出芯片选择。工作区已经提供 VS Code task：
+
+```text
+E73: RTT Viewer (nRF52840 fixed)
+```
+
+在 VS Code 里运行 `Tasks: Run Task` 并选择这个任务即可。它等价于：
+
+```powershell
+JLinkRTTViewer.exe --device NRF52840_XXAA --connection usb --interface swd --speed 4000 --autoconnect --setwindowtitle "E73 Tracker RTT"
+```
+
+如果电脑同时连了多个 J-Link，可以在 [.vscode/tasks.json](../.vscode/tasks.json) 的 `args` 里额外加入 `-usb` 和对应序列号，避免再弹出探针选择。
+
 ## 命令行等价流程
 
 从仓库根目录构建：
