@@ -125,7 +125,7 @@ static int divider_setup(void) {
 	*accp = (struct adc_channel_cfg){
 		.gain = battery_adc_gain,
 		.reference = ADC_REF_INTERNAL,
-		.acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 3),
+		.acquisition_time = ADC_ACQ_TIME(ADC_ACQ_TIME_MICROSECONDS, 20),
 	};
 
 	if (cfg->output_ohm != 0) {
