@@ -1,15 +1,11 @@
 #include <math.h>
 #include <string.h>
 
-#include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
 #include <hal/nrf_gpio.h>
 
 #include "LSM6DSV.h"
 #include "sensor/sensor_none.h"
-
-#define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
-#define LSM6DSV_AUX_MAG_VIA_IMU DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, aux_mag_via_imu)
 
 #define PACKET_SIZE 7
 LOG_MODULE_REGISTER(LSM6DSV, LOG_LEVEL_DBG);
@@ -38,8 +34,11 @@ static float freq_scale = 1; // ODR is scaled by INTERNAL_FREQ_FINE
 #define LSM6DSV_FIFO_MODE_BYPASS 0x00
 #define LSM6DSV_FIFO_MODE_CONTINUOUS 0x06
 #define LSM6DSV_UNKNOWN_TAG_RESYNC_THRESHOLD 4
+#define LSM6DSV_IF_CFG_INT_ACTIVE_LOW_OPEN_DRAIN 0x18
+#define LSM6DSV_IF_CFG_SHUB_PU_EN 0x40
 
 static uint8_t lsm_unknown_tag_count = 0;
+static bool aux_mag_detected = false;
 
 static int lsm_fifo_resync(const char *reason)
 {
@@ -52,6 +51,14 @@ static int lsm_fifo_resync(const char *reason)
 	if (err)
 		LOG_ERR("FIFO resync failed");
 	return err;
+}
+
+static int lsm_write_if_cfg(bool enable_aux_pullup)
+{
+	uint8_t if_cfg = LSM6DSV_IF_CFG_INT_ACTIVE_LOW_OPEN_DRAIN;
+	if (enable_aux_pullup)
+		if_cfg |= LSM6DSV_IF_CFG_SHUB_PU_EN;
+	return ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, if_cfg);
 }
 
 // Sensor hub continuous read mode state
@@ -155,10 +162,7 @@ int lsm_init(float clock_rate, float accel_time, float gyro_time, float *accel_a
 	last_gyro_odr = 0xff; // reset last odr to force update
 	// Reapply the intended runtime IF_CFG state explicitly.
 	// IF_CFG is not reset by SW_RESET, and earlier scan/WOM paths may have changed it.
-	uint8_t if_cfg = 0x18; // INT H_LACTIVE active low, PP_OD open-drain
-	if (LSM6DSV_AUX_MAG_VIA_IMU)
-		if_cfg |= 0x40; // SHUB_PU_EN: enable internal pull-up for auxiliary I2C
-	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, if_cfg);
+	err |= lsm_write_if_cfg(aux_mag_detected);
 
 	// Read internal frequency calibration
 	int8_t internal_freq_fine;
@@ -565,8 +569,7 @@ uint8_t lsm_setup_WOM(void)
 
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_FUNCTIONS_ENABLE, 0x80); // enable interrupts
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_MD1_CFG, 0x20); // route wake-up to INT1
-	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, 0x18); // INT H_LACTIVE active low, PP_OD open-drain
-	if (err)
+	err |= lsm_write_if_cfg(false); // Disable auxiliary I2C pull-up for WOM
 		LOG_ERR("Communication error");
 	return NRF_GPIO_PIN_PULLUP << 4 | NRF_GPIO_PIN_SENSE_LOW; // active low
 }
@@ -584,17 +587,18 @@ int lsm_ext_setup(void)
 	// lsm_init() will reconfigure ODR for normal operation.
 	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_CTRL1, (OP_MODE_XL_HP << 4) | ODR_480Hz);
 	k_msleep(5); // wait for oscillator startup
-	uint8_t if_cfg = 0x18; // INT H_LACTIVE active low, PP_OD open-drain
-	if (LSM6DSV_AUX_MAG_VIA_IMU)
-		if_cfg |= 0x40; // SHUB_PU_EN: enable internal pull-up for auxiliary I2C
-	err |= ssi_reg_write_byte(SENSOR_INTERFACE_DEV_IMU, LSM6DSV_IF_CFG, if_cfg);
+	aux_mag_detected = false;
+	err |= lsm_write_if_cfg(true); // Temporary pull-up for auxiliary I2C device discovery.
 	if (err)
+	{
 		LOG_ERR("Communication error");
+		lsm_write_if_cfg(false);
+	}
 	// Reset to scanning mode for clean device discovery
 	ext_continuous_active = false;
 	ext_scanning_mode = true;
-	sensor_interface_ext_configure(LSM6DSV_AUX_MAG_VIA_IMU ? &sensor_ext_lsm6dsv : NULL);
-	return 0;
+	sensor_interface_ext_configure(&sensor_ext_lsm6dsv);
+	return err;
 }
 
 int lsm_ext_passthrough(bool passthrough)
@@ -764,6 +768,16 @@ int lsm_ext_write_read(const uint8_t addr, const void *write_buf, size_t num_wri
 	return err;
 }
 
+static void lsm_ext_scan_complete(bool found)
+{
+	aux_mag_detected = found;
+	int err = lsm_write_if_cfg(found);
+	if (err)
+		LOG_ERR("Failed to update auxiliary I2C pull-up state after scan");
+	else
+		LOG_DBG("Auxiliary I2C pull-up %s after scan", found ? "enabled" : "disabled");
+}
+
 const sensor_imu_t sensor_imu_lsm6dsv = {
 	lsm_init,
 	lsm_shutdown,
@@ -787,5 +801,6 @@ const sensor_imu_t sensor_imu_lsm6dsv = {
 const sensor_ext_ssi_t sensor_ext_lsm6dsv = {
 	lsm_ext_write,
 	lsm_ext_write_read,
-	8
+	8,
+	lsm_ext_scan_complete
 };

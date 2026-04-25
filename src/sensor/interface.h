@@ -44,6 +44,7 @@ typedef struct sensor_ext_ssi {
 	int (*ext_write)(const uint8_t, const uint8_t*, uint32_t);
 	int (*ext_write_read)(const uint8_t, const void*, size_t, void*, size_t);
 	uint8_t ext_burst;
+	void (*ext_scan_complete)(bool);
 } sensor_ext_ssi_t;
 
 void sensor_interface_register_sensor_imu_spi(struct spi_dt_spec *dev);
