@@ -257,7 +257,6 @@ K_THREAD_DEFINE(sensor_init_thread_id, 256, sensor_request_scan, true, NULL, NUL
 */
 
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
-#define SENSOR_BOARD_HAS_AUX_MAG_VIA_IMU DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, aux_mag_via_imu)
 
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, int0_gpios)
 #define IMU_INT_EXISTS true
@@ -445,39 +444,66 @@ int sensor_scan(void)
 	}
 #endif
 #if SENSOR_MAG_EXT_EXISTS
-	if (mag_id < 0 && (sensor_imu_dev_reg & 0x80) && SENSOR_BOARD_HAS_AUX_MAG_VIA_IMU) // SPI IMU
+	if (mag_id < 0 && (sensor_imu_dev_reg & 0x80)) // SPI IMU
 	{
-		// IMU may support I2CM if the magnetometer is connected through the IMU
+		// Direct magnetometer scan failed. If the SPI IMU supports an external I2C
+		// master, scan that bus next; unsupported IMUs return an error from ext_setup().
 		int err = sensor_imu->ext_setup();
 		if (!err)
 		{
-			LOG_INF("Scanning bus for magnetometer through IMU I2CM");
-			if (sensor_mag_dev.addr > 0x80) // marked as external
+			const sensor_ext_ssi_t *ext_ssi = sensor_interface_ext_get();
+			if (ext_ssi != NULL)
 			{
-				sensor_mag_dev.addr &= 0x7F;
-				// Check if address is still valid after clearing external marker
-				// 0x7F or out of valid I2C range (8-119) means invalid/failed scan marker
-				if (sensor_mag_dev.addr >= 0x7F || sensor_mag_dev.addr < 8)
+				bool ext_mag_detected = false;
+				bool ext_mag_registered = false;
+
+				LOG_INF("Scanning bus for magnetometer through IMU I2CM");
+				if (sensor_mag_dev.addr > 0x80) // marked as external
+				{
+					sensor_mag_dev.addr &= 0x7F;
+					// Check if address is still valid after clearing external marker
+					// 0x7F or out of valid I2C range (8-119) means invalid/failed scan marker
+					if (sensor_mag_dev.addr >= 0x7F || sensor_mag_dev.addr < 8)
+					{
+						sensor_mag_dev.addr = 0x00; // reset to trigger full scan
+						sensor_mag_dev_reg = 0xFF;
+					}
+				}
+				else
 				{
 					sensor_mag_dev.addr = 0x00; // reset to trigger full scan
 					sensor_mag_dev_reg = 0xFF;
 				}
+
+				mag_id = sensor_scan_mag_ext(ext_ssi, &sensor_mag_dev.addr, &sensor_mag_dev_reg);
+				ext_mag_detected = mag_id >= 0;
+				if (mag_id >= 0 && mag_id < (int)ARRAY_SIZE(sensor_mags) && sensor_mags[mag_id] != NULL && sensor_mags[mag_id] != &sensor_mag_none)
+				{
+					err = sensor_interface_register_sensor_mag_ext(sensor_mag_dev.addr, sensor_mags[mag_id]->ext_min_burst, sensor_mags[mag_id]->ext_burst);
+					if (err)
+					{
+						mag_id = -1;
+						LOG_ERR("Failed to register magnetometer external interface");
+					}
+					else
+					{
+						sensor_mag_dev.addr |= 0x80; // mark as external
+						ext_mag_registered = true;
+					}
+				}
+				if (ext_mag_detected && !ext_mag_registered)
+				{
+					mag_id = -1;
+					sensor_mag_dev.addr = 0xFF;
+					sensor_mag_dev_reg = 0xFF;
+				}
+
+				if (ext_ssi->ext_scan_complete != NULL)
+					ext_ssi->ext_scan_complete(ext_mag_registered);
 			}
 			else
 			{
-				sensor_mag_dev.addr = 0x00; // reset magnetometer data
-				sensor_mag_dev_reg = 0xFF;
-			}
-			mag_id = sensor_scan_mag_ext(sensor_interface_ext_get(), &sensor_mag_dev.addr, &sensor_mag_dev_reg);
-			if (mag_id >= 0 && mag_id < (int)ARRAY_SIZE(sensor_mags) && sensor_mags[mag_id] != NULL && sensor_mags[mag_id] != &sensor_mag_none)
-			{
-				err = sensor_interface_register_sensor_mag_ext(sensor_mag_dev.addr, sensor_mags[mag_id]->ext_min_burst, sensor_mags[mag_id]->ext_burst);
-				sensor_mag_dev.addr |= 0x80; // mark as external
-				if (err)
-				{
-					mag_id = -1;
-					LOG_ERR("Failed to register magnetometer external interface");
-				}
+				LOG_ERR("IMU external interface setup succeeded but no interface was registered");
 			}
 		}
 	}

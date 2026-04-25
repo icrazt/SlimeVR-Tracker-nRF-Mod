@@ -915,7 +915,8 @@ retry_read:
 const sensor_ext_ssi_t sensor_ext_icm45686 = {
 	icm45_ext_write,
 	icm45_ext_write_read,
-	15
+	15,
+	NULL //TODO: need implement of ext_scan_complete 
 };
 
 int icm45_ext_setup(void)

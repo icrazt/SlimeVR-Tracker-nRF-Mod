@@ -324,7 +324,7 @@ uint8_t lsm6dso_setup_WOM(void)
 
 int lsm6dso_ext_setup(void)
 {
-	sensor_interface_ext_configure(&sensor_ext_lsm6dsv);
+	sensor_interface_ext_configure(&sensor_ext_lsm6dso);
 	return 0;
 }
 
@@ -439,5 +439,6 @@ const sensor_imu_t sensor_imu_lsm6dso = {
 const sensor_ext_ssi_t sensor_ext_lsm6dso = {
 	*lsm6dso_ext_write,
 	*lsm6dso_ext_write_read,
-	8
+	8,
+	NULL //TODO: need implement of ext_scan_complete 
 };
