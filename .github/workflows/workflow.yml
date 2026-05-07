@@ -187,7 +187,9 @@ jobs:
                   {boardname: "promicro_uf2/nrf52840/default_spi", filename: "SlimeNRF_ProMicro_Tracker_SPI"},
                   {boardname: "promicro_uf2/nrf52840/default_spi", filename: "SlimeNRF_ProMicro_Tracker_SPI_SD", with_softdevice: true},
                   {boardname: "e73_tracker/nrf52840/uf2", filename: "Crazt_E73_Tracker_SPI"},
-                  {boardname: "e73_tracker/nrf52840/uf2", filename: "Crazt_E73_Tracker_SPI_SD", with_softdevice: true}
+                  {boardname: "e73_tracker/nrf52840/uf2", filename: "Crazt_E73_Tracker_SPI_SD", with_softdevice: true},
+                  {boardname: "cheesecake_nrf/nrf52840/uf2", filename: "Crazt_Cheesecake_NRF_Tracker"},
+                  {boardname: "cheesecake_nrf/nrf52840/uf2", filename: "Crazt_Cheesecake_NRF_Tracker_SD", with_softdevice: true}
                   # {boardname: "promicro_uf2/nrf52840/default_i2c", filename: "SlimeNRF_ProMicro_Tracker_I2C"},
                   # {boardname: "promicro_uf2/nrf52840/default_i2c", filename: "SlimeNRF_ProMicro_Tracker_I2C_SD", with_softdevice: true},
                   # {boardname: "promicro_uf2/nrf52840/chrysalis", filename: "SlimeNRF_ProMicro_Chrysalis_Tracker"},
