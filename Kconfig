@@ -82,6 +82,27 @@ config LED_DEFAULT_COLOR_B
 
 endmenu
 
+menu "Status LED brightness limiting"
+
+config LED_MAX_BRIGHTNESS
+    int "Maximum status LED brightness"
+    range 0 10000
+    default 10000
+    help
+        Maximum status LED brightness in parts per ten thousand.
+        This is applied after pattern brightness and before output.
+
+config LED_WHITE_MAX_BRIGHTNESS
+    int "Maximum white status LED brightness"
+    range 0 10000
+    default 10000
+    help
+        Maximum brightness for white status LED indications.
+        White drives multiple LED channels at once, so boards with weak
+        battery startup paths can set this lower than LED_MAX_BRIGHTNESS.
+
+endmenu
+
 config USER_EXTRA_ACTIONS
     bool "Multiple press actions"
     help

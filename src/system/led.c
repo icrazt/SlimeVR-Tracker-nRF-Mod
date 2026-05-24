@@ -273,6 +273,17 @@ static int led_pwm_period[SYS_LED_COLOR_COUNT][1] = {
 };
 #endif
 
+static int led_brightness_limit(enum sys_led_color color)
+{
+	int limit = CONFIG_LED_MAX_BRIGHTNESS;
+
+	if (color == SYS_LED_COLOR_WHITE && CONFIG_LED_WHITE_MAX_BRIGHTNESS < limit) {
+		limit = CONFIG_LED_WHITE_MAX_BRIGHTNESS;
+	}
+
+	return limit;
+}
+
 // Using brightness and value if PWM is supported, otherwise value is coerced to on/off
 // TODO: use computed constants for high/low brightness and color values
 static void led_pin_set(enum sys_led_color color, int brightness_pptt, int value_pptt)
@@ -285,6 +296,10 @@ static void led_pin_set(enum sys_led_color color, int brightness_pptt, int value
 		brightness_pptt = 0;
 	} else if (brightness_pptt > 10000) {
 		brightness_pptt = 10000;
+	}
+	int brightness_limit = led_brightness_limit(color);
+	if (brightness_pptt > brightness_limit) {
+		brightness_pptt = brightness_limit;
 	}
 	if (value_pptt < 0) {
 		value_pptt = 0;
