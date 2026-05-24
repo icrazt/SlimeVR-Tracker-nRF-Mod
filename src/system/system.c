@@ -53,6 +53,12 @@ static const struct gpio_dt_spec dock = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, dock_
 #else
 #pragma message "Dock sense GPIO does not exist"
 #endif
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, plug_in_gpios)
+#define PLUG_IN_EXISTS true
+static const struct gpio_dt_spec plug_in = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, plug_in_gpios);
+#else
+#pragma message "Plug-in sense GPIO does not exist"
+#endif
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, chg_gpios)
 #define CHG_EXISTS true
 static const struct gpio_dt_spec chg = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, chg_gpios);
@@ -99,6 +105,17 @@ void configure_sense_pins(void)
 		nrf_gpio_cfg_sense_set(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, dock_gpios), NRF_GPIO_PIN_SENSE_LOW);
 	}
 	LOG_INF("Configured dock sense");
+#endif
+	// Configure plug-in sense
+#if PLUG_IN_EXISTS
+	if (plug_in_read()) {
+		nrf_gpio_cfg_input(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_in_gpios), NRF_GPIO_PIN_NOPULL);
+		nrf_gpio_cfg_sense_set(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_in_gpios), NRF_GPIO_PIN_SENSE_HIGH);
+	} else {
+		nrf_gpio_cfg_input(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_in_gpios), NRF_GPIO_PIN_PULLUP);
+		nrf_gpio_cfg_sense_set(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_in_gpios), NRF_GPIO_PIN_SENSE_LOW);
+	}
+	LOG_INF("Configured plug-in sense");
 #endif
 	// Configure chgstat sense
 	if (!docked) {
@@ -492,6 +509,9 @@ static int sys_gpio_init(void)
 #if DOCK_EXISTS // configure if exists
 	gpio_pin_configure_dt(&dock, GPIO_INPUT);
 #endif
+#if PLUG_IN_EXISTS
+	gpio_pin_configure_dt(&plug_in, GPIO_INPUT);
+#endif
 #if CHG_EXISTS
 	gpio_pin_configure_dt(&chg, GPIO_INPUT);
 #endif
@@ -516,6 +536,24 @@ bool dock_read(void)
 {
 #if DOCK_EXISTS
 	return gpio_pin_get_dt(&dock);
+#else
+	return false;
+#endif
+}
+
+bool plug_in_exists(void)
+{
+#if PLUG_IN_EXISTS
+	return true;
+#else
+	return false;
+#endif
+}
+
+bool plug_in_read(void)
+{
+#if PLUG_IN_EXISTS
+	return gpio_pin_get_dt(&plug_in);
 #else
 	return false;
 #endif

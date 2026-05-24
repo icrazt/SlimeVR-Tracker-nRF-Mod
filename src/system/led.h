@@ -65,8 +65,15 @@ enum sys_led_color {
 	SYS_LED_COLOR_ERROR,
 	SYS_LED_COLOR_CHARGING,
 	SYS_LED_COLOR_PAIRING,
+	SYS_LED_COLOR_WHITE,
+	SYS_LED_COLOR_CYAN,
+	SYS_LED_COLOR_PURPLE,
+	SYS_LED_COLOR_ORANGE,
+	SYS_LED_COLOR_YELLOW_GREEN,
+	SYS_LED_COLOR_COUNT,
 };
 
 void set_led(enum sys_led_pattern led_pattern, int priority);
+void set_led_color(enum sys_led_pattern led_pattern, enum sys_led_color color, int priority);
 
 #endif

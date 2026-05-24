@@ -52,11 +52,33 @@ static bool device_charged = false;
 
 LOG_MODULE_REGISTER(power, LOG_LEVEL_INF);
 
+enum sys_charge_state {
+	/* No external power is detected; battery-only operation. */
+	SYS_CHARGE_STATE_UNPLUGGED,
+	/* External power is present and the charger reports an active charge cycle. */
+	SYS_CHARGE_STATE_CHARGING,
+	/* External power is present and the charger reports charge complete. */
+	SYS_CHARGE_STATE_CHARGED,
+	/* External power is present, but the charge pin state cannot prove charging or full. */
+	SYS_CHARGE_STATE_POWERED,
+};
+
 static void sys_WOM(bool force);
 static void sys_system_off(void);
 static void sys_system_reboot(void);
 
 static int sys_power_state_request(int id);
+static bool usb_vbus_detected(void);
+static enum sys_charge_state charge_state_from_inputs(
+	bool charge_active,
+	bool charge_complete,
+	bool voltage_plugged,
+	bool usb_plugged
+);
+static bool charge_display_power_present(void);
+static void set_power_led(enum sys_charge_state charge_state, bool low_battery, int16_t battery_pptt);
+static void sys_charge_display_until_unplugged(void);
+static bool battery_pptt_is_valid(int16_t battery_pptt);
 
 static void disable_DFU_thread(void);
 K_THREAD_DEFINE(disable_DFU_thread_id, 128, disable_DFU_thread, NULL, NULL, NULL, 6, 0, 500); // disable DFU if the system is running correctly
@@ -364,6 +386,129 @@ void sys_request_system_reboot(bool immediate)
 	sys_power_state_request(4);
 }
 
+static bool usb_vbus_detected(void)
+{
+#ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
+	return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+#else
+	return false;
+#endif
+}
+
+static enum sys_charge_state charge_state_from_inputs(
+	bool charge_active,
+	bool charge_complete,
+	bool voltage_plugged,
+	bool usb_plugged
+)
+{
+	if (plug_in_exists())
+	{
+		bool plug_in = plug_in_read();
+
+		if (!plug_in && !usb_plugged)
+			return SYS_CHARGE_STATE_UNPLUGGED;
+		if (plug_in && charge_active)
+			return SYS_CHARGE_STATE_CHARGING;
+		if (plug_in && !charge_active)
+			return SYS_CHARGE_STATE_CHARGED;
+		return SYS_CHARGE_STATE_POWERED;
+	}
+
+	if (charge_active)
+		return SYS_CHARGE_STATE_CHARGING;
+	if (charge_complete)
+		return SYS_CHARGE_STATE_CHARGED;
+	if (voltage_plugged || usb_plugged)
+		return SYS_CHARGE_STATE_POWERED;
+	return SYS_CHARGE_STATE_UNPLUGGED;
+}
+
+static bool charge_display_power_present(void)
+{
+	return charge_state_from_inputs(chg_read(), stby_read(), plugged, usb_vbus_detected())
+		!= SYS_CHARGE_STATE_UNPLUGGED;
+}
+
+static enum sys_led_color charging_color_for_level(int16_t battery_pptt)
+{
+	if (battery_pptt_is_valid(battery_pptt) && battery_pptt >= 8500)
+		return SYS_LED_COLOR_YELLOW_GREEN;
+
+	return SYS_LED_COLOR_ORANGE;
+}
+
+static void set_power_led(enum sys_charge_state charge_state, bool low_battery, int16_t battery_pptt)
+{
+	switch (charge_state)
+	{
+	case SYS_CHARGE_STATE_CHARGING:
+		set_led_color(
+			SYS_LED_PATTERN_PULSE_PERSIST,
+			charging_color_for_level(battery_pptt),
+			SYS_LED_PRIORITY_SYSTEM
+		);
+		break;
+	case SYS_CHARGE_STATE_CHARGED:
+		set_led_color(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SYSTEM);
+		break;
+	case SYS_CHARGE_STATE_POWERED:
+		set_led_color(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_COLOR_YELLOW_GREEN, SYS_LED_PRIORITY_SYSTEM);
+		break;
+	case SYS_CHARGE_STATE_UNPLUGGED:
+	default:
+		if (low_battery)
+			set_led_color(SYS_LED_PATTERN_LONG_PERSIST, SYS_LED_COLOR_ERROR, SYS_LED_PRIORITY_SYSTEM);
+		else
+			set_led_color(SYS_LED_PATTERN_ACTIVE_PERSIST, SYS_LED_COLOR_CYAN, SYS_LED_PRIORITY_SYSTEM);
+		break;
+	}
+}
+
+static void sys_charge_display_until_unplugged(void)
+{
+	LOG_INF("External power present; keeping charge indicator active until unplugged");
+
+	configure_system_off();
+	esb_deinitialize();
+	watchdog_suspend_all();
+	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
+	set_regulator(SYS_REGULATOR_LDO);
+
+	while (charge_display_power_present())
+	{
+		int battery_mV;
+		int16_t battery_pptt = read_batt_mV(&battery_mV);
+		bool battery_pptt_valid = battery_pptt_is_valid(battery_pptt);
+		enum sys_charge_state charge_state = charge_state_from_inputs(
+			chg_read(),
+			stby_read(),
+			plugged,
+			usb_vbus_detected()
+		);
+
+		if (battery_pptt_valid)
+		{
+			current_battery_pptt = battery_pptt;
+			calibrated_battery_pptt = sys_get_calibrated_battery_pptt(current_battery_pptt);
+		}
+		if (plug_in_exists())
+			plugged = plug_in_read();
+		else if (!plugged && battery_mV > 4300 && battery_mV <= 6000)
+			plugged = true;
+		else if (plugged && battery_mV <= 4250)
+			plugged = false;
+		sys_update_battery_tracker_voltage(battery_mV, true);
+		set_power_led(charge_state, false, current_battery_pptt);
+
+		k_msleep(1000);
+	}
+
+	set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
+	watchdog_resume_all();
+	LOG_INF("External power removed; continuing system off");
+}
+
 static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what does the system do?
 {
 	LOG_INF("IMU wake up requested");
@@ -416,6 +561,11 @@ static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what do
 static void sys_system_off(void) // TODO: add timeout
 {
 	LOG_INF("System off requested");
+	if (charge_display_power_present())
+	{
+		sys_charge_display_until_unplugged();
+	}
+
 	configure_system_off(); // Common subsystem shutdown and prepare sense pins
 	sensor_calibration_online_mag_cold_start();
 #if CONFIG_SENSOR_USE_TCAL
@@ -500,11 +650,7 @@ bool vin_read(void) // blocking
 
 bool vbus_read(void)
 {
-#ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
-	return (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
-#else
-	return vin_read();
-#endif
+	return usb_vbus_detected() || vin_read();
 }
 
 static void disable_DFU_thread(void)
@@ -634,8 +780,8 @@ static void power_thread(void)
 		sys_power_state_request(-1); // clear request
 
 		bool docked = dock_read();
-		bool charging = chg_read();
-		bool charged = stby_read();
+		bool charge_active = chg_read();
+		bool charge_complete = stby_read();
 
 		int battery_mV;
 		int16_t battery_pptt = read_batt_mV(&battery_mV);
@@ -649,22 +795,28 @@ static void power_thread(void)
 		bool battery_available = battery_mV > 1500 && !abnormal_reading; // Keep working without the battery connected, otherwise it is obviously too dead to boot system
 		bool battery_discharged = battery_available && (average_pptt >= 0 ? average_pptt : battery_pptt) == 0;
 		// Separate detection of vin
-		if (!plugged && battery_mV > 4300 && !abnormal_reading)
+		if (plug_in_exists())
+			plugged = plug_in_read();
+		else if (!plugged && battery_mV > 4300 && !abnormal_reading)
 			plugged = true;
 		else if ((plugged && battery_mV <= 4250) || abnormal_reading)
 			plugged = false;
-#ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
-		bool usb_plugged = NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk;
-#else
-		bool usb_plugged = false;
-#endif
+		bool usb_plugged = usb_vbus_detected();
+		enum sys_charge_state charge_state = charge_state_from_inputs(
+			charge_active,
+			charge_complete,
+			plugged,
+			usb_plugged
+		);
+		bool charged = charge_state == SYS_CHARGE_STATE_CHARGED;
+		bool external_powered = charge_state != SYS_CHARGE_STATE_UNPLUGGED;
 
-		if (!device_plugged && (charging || charged || plugged || usb_plugged))
+		if (!device_plugged && external_powered)
 		{
 			device_plugged = true;
 			set_status(SYS_STATUS_PLUGGED, true);
 		}
-		else if (device_plugged && !(charging || charged || plugged || usb_plugged))
+		else if (device_plugged && !external_powered)
 		{
 			device_plugged = false;
 			set_status(SYS_STATUS_PLUGGED, false);
@@ -694,6 +846,8 @@ static void power_thread(void)
 			{
 				LOG_WRN("Discharged battery");
 				sys_update_battery_tracker(0, device_plugged);
+				set_led_color(SYS_LED_PATTERN_ERROR_B, SYS_LED_COLOR_ERROR, SYS_LED_PRIORITY_HIGHEST);
+				k_msleep(1600);
 			}
 			sys_request_system_off(true);
 		}
@@ -724,16 +878,7 @@ static void power_thread(void)
 			battery_mV
 		);
 
-		if (charging)
-			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else if (charged)
-			set_led(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else if (plugged || usb_plugged)
-			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else if (battery_low)
-			set_led(SYS_LED_PATTERN_LONG_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else
-			set_led(SYS_LED_PATTERN_ACTIVE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
+		set_power_led(charge_state, battery_low, current_battery_pptt);
 //			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SYSTEM);
 
 		/* Feed watchdog at end of each loop iteration */
