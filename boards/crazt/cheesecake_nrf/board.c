@@ -16,8 +16,29 @@
 #define SYSOFF_GPIO_PORT_NUM DT_PROP(DT_GPIO_CTLR(ZEPHYR_USER_NODE, sysoff_gpios), port)
 #define SYSOFF_GPIO NRF_GPIO_PIN_MAP(SYSOFF_GPIO_PORT_NUM, SYSOFF_GPIO_PIN)
 
+static void board_sysoff_hold_low(void)
+{
+	/*
+	 * SYSOFF is weakly pulled up to VBAT by the external power path. Clamp
+	 * it low as soon as firmware runs so reset/SYSTEM_OFF recovery cannot
+	 * briefly request battery cutoff while REG0 is ramping.
+	 */
+	nrf_gpio_pin_clear(SYSOFF_GPIO);
+	nrf_gpio_cfg(
+		SYSOFF_GPIO,
+		NRF_GPIO_PIN_DIR_OUTPUT,
+		NRF_GPIO_PIN_INPUT_DISCONNECT,
+		NRF_GPIO_PIN_NOPULL,
+		NRF_GPIO_PIN_H0S1,
+		NRF_GPIO_PIN_NOSENSE
+	);
+	nrf_gpio_pin_clear(SYSOFF_GPIO);
+}
+
 void board_early_init_hook(void)
 {
+	board_sysoff_hold_low();
+
 	if ((nrf_power_mainregstatus_get(NRF_POWER) == NRF_POWER_MAINREGSTATUS_HIGH) &&
 	    ((NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) ==
 	     (UICR_REGOUT0_VOUT_DEFAULT << UICR_REGOUT0_VOUT_Pos))) {
@@ -41,21 +62,8 @@ void board_early_init_hook(void)
 
 static int board_cheesecake_nrf_init(void)
 {
-	/*
-	 * P1.13 is active-high for external power cutoff. Keep it inactive/low
-	 * during normal operation and through nRF System OFF GPIO retention.
-	 */
-	nrf_gpio_pin_clear(SYSOFF_GPIO);
-	nrf_gpio_cfg(
-		SYSOFF_GPIO,
-		NRF_GPIO_PIN_DIR_OUTPUT,
-		NRF_GPIO_PIN_INPUT_DISCONNECT,
-		NRF_GPIO_PIN_NOPULL,
-		NRF_GPIO_PIN_S0S1,
-		NRF_GPIO_PIN_NOSENSE
-	);
-
+	board_sysoff_hold_low();
 	return 0;
 }
 
-SYS_INIT(board_cheesecake_nrf_init, PRE_KERNEL_1, CONFIG_KERNEL_INIT_PRIORITY_DEFAULT);
+SYS_INIT(board_cheesecake_nrf_init, PRE_KERNEL_1, 0);
