@@ -307,6 +307,23 @@ static void led_pin_set(enum sys_led_color color, int brightness_pptt, int value
 	gpio_pin_set_dt(&led, value_pptt > 5000);
 #endif
 }
+
+static int led_breathe_value_pptt(int pattern_state)
+{
+	int led_value = pattern_state > 500 ? 1000 - pattern_state : pattern_state;
+
+	if (led_value < 200) {
+		led_value = led_value * 30;
+	} else if (led_value < 300) {
+		led_value = (led_value - 200) * 20 + 6000;
+	} else if (led_value < 400) {
+		led_value = (led_value - 300) * 15 + 8000;
+	} else {
+		led_value = (led_value - 400) * 5 + 9500;
+	}
+
+	return led_value;
+}
 #endif
 
 void set_led(enum sys_led_pattern led_pattern, int priority)
@@ -438,8 +455,9 @@ static void led_thread(void)
 			break;
 
 		case SYS_LED_PATTERN_ON_PERSIST:
-			led_pin_set(SYS_LED_COLOR_SUCCESS, 2000, 10000);
-			k_thread_suspend(led_thread_id);
+			led_pattern_state = (led_pattern_state + 1) % 1000;
+			led_pin_set(SYS_LED_COLOR_SUCCESS, 10000, led_breathe_value_pptt(led_pattern_state));
+			k_msleep(5);
 			break;
 		case SYS_LED_PATTERN_LONG_PERSIST:
 			led_pattern_state = (led_pattern_state + 1) % 2;
@@ -448,19 +466,9 @@ static void led_thread(void)
 			break;
 		case SYS_LED_PATTERN_PULSE_PERSIST:
 			led_pattern_state = (led_pattern_state + 1) % 1000;
-			//			float led_value = sinf(led_pattern_state * (M_PI / 1000));
-			//			led_pin_set(SYS_LED_COLOR_CHARGING, 10000, led_value * 10000);
-			int led_value = led_pattern_state > 500 ? 1000 - led_pattern_state : led_pattern_state;
-			if (led_value < 200) {
-				led_value = (led_value) * 30;
-			} else if (led_value < 300) {
-				led_value = (led_value - 200) * 20 + 6000;
-			} else if (led_value < 400) {
-				led_value = (led_value - 300) * 15 + 8000;
-			} else {
-				led_value = (led_value - 400) * 5 + 9500;
-			}
-			led_pin_set(SYS_LED_COLOR_CHARGING, 10000, led_value);
+//			float led_value = sinf(led_pattern_state * (M_PI / 1000));
+//			led_pin_set(SYS_LED_COLOR_CHARGING, 10000, led_value * 10000);
+			led_pin_set(SYS_LED_COLOR_CHARGING, 10000, led_breathe_value_pptt(led_pattern_state));
 			k_msleep(5);
 			break;
 		case SYS_LED_PATTERN_ACTIVE_PERSIST: // off duration first because the device may turn on multiple times rapidly

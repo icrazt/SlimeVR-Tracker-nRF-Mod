@@ -747,23 +747,10 @@ static void power_thread(void)
 			battery_mV
 		);
 
-		static int64_t charged_led_start = 0;
-		if (!charged) {
-			charged_led_start = 0;
-		}
-
 		if (charging)
 			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else if (charged) {
-			if (!charged_led_start) {
-				charged_led_start = k_uptime_get();
-			}
-			if (k_uptime_get() - charged_led_start < 600000) {
-				set_led(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-			} else {
-				set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SYSTEM);
-			}
-		}
+		else if (charged)
+			set_led(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_PRIORITY_SYSTEM);
 		else if (plugged || usb_plugged)
 			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
 		else if (battery_low)
