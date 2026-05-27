@@ -201,46 +201,75 @@ static void led_resume(void)
 #endif
 
 #ifdef LED_RGB_COLOR
-static int led_pwm_period[5][3] = {
-	{CONFIG_LED_DEFAULT_COLOR_R, CONFIG_LED_DEFAULT_COLOR_G, CONFIG_LED_DEFAULT_COLOR_B}, // Default
-	{0, 10000, 0},                                                                        // Success
-	{10000, 0, 0},                                                                        // Error
-	{8000, 2000, 0},                                                                      // Charging
-	{0, 0, 10000},                                                                        // Pairing
+static int led_pwm_period[SYS_LED_COLOR_COUNT][3] = {
+	{10000, 10000, 10000}, // Default/lifecycle
+	{0, 10000, 0},         // Success
+	{10000, 0, 0},         // Error
+	{10000, 3500, 0},      // Charging
+	{0, 0, 10000},         // Pairing
+	{0, 8000, 10000},      // Calibration
+	{10000, 0, 10000},     // Connection error
+	{10000, 1200, 0},      // Low battery
 };
 #elif defined(LED_TRI_COLOR)
-static int led_pwm_period[5][3] = {
-	{0, 0, 10000},   // Default
-	{0, 10000, 0},   // Success
-	{10000, 0, 0},   // Error
-	{6000, 4000, 0}, // Charging
-	{0, 0, 10000},   // Pairing
+static int led_pwm_period[SYS_LED_COLOR_COUNT][3] = {
+	{0, 0, 10000},    // Default
+	{0, 10000, 0},    // Success
+	{10000, 0, 0},    // Error
+	{6000, 4000, 0},  // Charging
+	{0, 0, 10000},    // Pairing
+	{0, 4000, 10000}, // Calibration
+	{10000, 0, 10000}, // Connection error
+	{10000, 1500, 0}, // Low battery
 };
 #elif defined(LED_RG_COLOR)
-static int led_pwm_period[5][2] = {
+static int led_pwm_period[SYS_LED_COLOR_COUNT][2] = {
 	{CONFIG_LED_DEFAULT_COLOR_R, CONFIG_LED_DEFAULT_COLOR_G}, // Default
 	{0, 10000},                                               // Success
 	{10000, 0},                                               // Error
 	{8000, 2000},                                             // Charging
 	{4000, 6000},                                             // Pairing
+	{0, 10000},                                               // Calibration
+	{10000, 0},                                               // Connection error
+	{10000, 1000},                                            // Low battery
 };
 #elif defined(LED_DUAL_COLOR)
-static int led_pwm_period[5][2] = {
+static int led_pwm_period[SYS_LED_COLOR_COUNT][2] = {
 	{0, 10000},   // Default
 	{0, 10000},   // Success
 	{10000, 0},   // Error
 	{6000, 4000}, // Charging
 	{0, 10000},   // Pairing
+	{0, 10000},   // Calibration
+	{10000, 0},   // Connection error
+	{10000, 0},   // Low battery
 };
 #else
-static int led_pwm_period[5][1] = {
+static int led_pwm_period[SYS_LED_COLOR_COUNT][1] = {
 	{10000}, // Default
 	{10000}, // Success
 	{10000}, // Error
 	{10000}, // Charging
 	{10000}, // Pairing
+	{10000}, // Calibration
+	{10000}, // Connection error
+	{10000}, // Low battery
 };
 #endif
+
+static enum sys_led_color led_context_color(void)
+{
+	switch (current_priority) {
+	case SYS_LED_PRIORITY_SENSOR:
+		return SYS_LED_COLOR_CALIBRATION;
+	case SYS_LED_PRIORITY_CONNECTION:
+		return SYS_LED_COLOR_PAIRING;
+	case SYS_LED_PRIORITY_STATUS:
+		return SYS_LED_COLOR_ERROR;
+	default:
+		return SYS_LED_COLOR_DEFAULT;
+	}
+}
 
 // Using brightness and value if PWM is supported, otherwise value is coerced to on/off
 // TODO: use computed constants for high/low brightness and color values
@@ -334,7 +363,7 @@ static void led_thread(void)
 		LOG_DBG("led_thread: current_led_pattern %d", current_led_pattern);
 		switch (current_led_pattern) {
 		case SYS_LED_PATTERN_ON:
-			led_pin_set(SYS_LED_COLOR_DEFAULT, 10000, 10000);
+			led_pin_set(led_context_color(), 10000, 10000);
 			k_thread_suspend(led_thread_id);
 			break;
 		case SYS_LED_PATTERN_SHORT:
@@ -344,12 +373,12 @@ static void led_thread(void)
 			break;
 		case SYS_LED_PATTERN_LONG:
 			led_pattern_state = (led_pattern_state + 1) % 2;
-			led_pin_set(SYS_LED_COLOR_DEFAULT, 10000, led_pattern_state * 10000);
+			led_pin_set(led_context_color(), 10000, led_pattern_state * 10000);
 			k_msleep(500);
 			break;
 		case SYS_LED_PATTERN_FLASH:
 			led_pattern_state = (led_pattern_state + 1) % 2;
-			led_pin_set(SYS_LED_COLOR_DEFAULT, 10000, led_pattern_state * 10000);
+			led_pin_set(led_context_color(), 10000, led_pattern_state * 10000);
 			k_msleep(200);
 			break;
 
@@ -414,8 +443,8 @@ static void led_thread(void)
 			break;
 		case SYS_LED_PATTERN_LONG_PERSIST:
 			led_pattern_state = (led_pattern_state + 1) % 2;
-			led_pin_set(SYS_LED_COLOR_CHARGING, 2000, led_pattern_state * 10000);
-			k_msleep(500);
+			led_pin_set(SYS_LED_COLOR_LOW_BATTERY, 2000, led_pattern_state * 10000);
+			k_msleep(led_pattern_state ? 500 : 4500);
 			break;
 		case SYS_LED_PATTERN_PULSE_PERSIST:
 			led_pattern_state = (led_pattern_state + 1) % 1000;
@@ -436,9 +465,8 @@ static void led_thread(void)
 			break;
 		case SYS_LED_PATTERN_ACTIVE_PERSIST: // off duration first because the device may turn on multiple times rapidly
 											 // and waste battery power
-			led_pattern_state = (led_pattern_state + 1) % 2;
-			led_pin_set(SYS_LED_COLOR_DEFAULT, 10000, !led_pattern_state * 10000);
-			k_msleep(led_pattern_state ? 9700 : 300);
+			led_pin_set(SYS_LED_COLOR_DEFAULT, 10000, 0);
+			k_thread_suspend(led_thread_id);
 			break;
 
 		case SYS_LED_PATTERN_ERROR_A: // TODO: should this use 20% duty cycle?
@@ -448,7 +476,11 @@ static void led_thread(void)
 			break;
 		case SYS_LED_PATTERN_ERROR_B:
 			led_pattern_state = (led_pattern_state + 1) % 10;
-			led_pin_set(SYS_LED_COLOR_ERROR, 10000, (led_pattern_state < 6 && led_pattern_state % 2) * 10000);
+			led_pin_set(
+				SYS_LED_COLOR_CONNECTION_ERROR,
+				10000,
+				(led_pattern_state < 6 && led_pattern_state % 2) * 10000
+			);
 			k_msleep(500);
 			break;
 		case SYS_LED_PATTERN_ERROR_C:

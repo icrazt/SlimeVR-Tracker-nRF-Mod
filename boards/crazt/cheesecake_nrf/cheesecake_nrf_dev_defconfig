@@ -9,6 +9,7 @@ CONFIG_USB_DEVICE_MANUFACTURER="SlimeVR"
 CONFIG_USB_DEVICE_PRODUCT="SlimeNRF Tracker CheeseCake_NRF Dev"
 
 CONFIG_BATTERY_USE_REG_LDO_MAPPING=y
+CONFIG_LED_RGB_COLOR=y
 
 # Development image: no UF2 bootloader, no SoftDevice, app starts at flash base.
 # CONFIG_BUILD_OUTPUT_UF2 is not set

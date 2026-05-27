@@ -79,7 +79,18 @@ int main(void)
 #endif
 #endif
 
-	set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_BOOT); // Boot LED
+	enum sys_poweroff_context poweroff_context = sys_get_poweroff_context();
+	if (poweroff_context == SYS_POWEROFF_CONTEXT_USER_PLUGGED && plug_read() && !button_read()) {
+		LOG_INF("Staying off after user shutdown while plugged");
+		set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
+		sys_request_system_off(false);
+		return 0;
+	}
+	if (poweroff_context != SYS_POWEROFF_CONTEXT_NONE) {
+		sys_set_poweroff_context(SYS_POWEROFF_CONTEXT_NONE);
+	}
+
+	set_led(SYS_LED_PATTERN_ONESHOT_POWERON, SYS_LED_PRIORITY_BOOT); // Boot LED
 
 	uint8_t reboot_counter = reboot_counter_read();
 	bool booting_from_shutdown
@@ -107,13 +118,12 @@ int main(void)
 			sys_request_system_off(false);
 		}
 #endif
+		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_BOOT);
 		if (k_uptime_get() <= 5000) {
 			set_led(SYS_LED_PATTERN_ONESHOT_POWERON, SYS_LED_PRIORITY_HIGHEST);
 		} else {
 			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
 		}
-	} else if (booting_from_shutdown) {
-		set_led(SYS_LED_PATTERN_ONESHOT_POWERON, SYS_LED_PRIORITY_BOOT);
 	}
 
 	bool docked = dock_read();
@@ -145,20 +155,16 @@ int main(void)
 	}
 
 #if USER_SHUTDOWN_ENABLED
+	bool plug_detected = plug_read();
+	bool plugged = plug_detected || vin_read();
 	bool charging = chg_read();
-	bool charged = stby_read();
-	bool plugged = vin_read();
+	bool charged = plug_detected ? !chg_read() : stby_read();
 
 	if (reset_mode == 0 && !booting_from_shutdown && !charging && !charged
 		&& !plugged) { // Reset mode user shutdown, only if unplugged and undocked
 		sys_user_shutdown();
 	}
 #endif
-
-	if (!booting_from_shutdown) { // ONESHOT_POWERON automatically sets LED off
-		k_usleep(60);
-		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_BOOT);
-	}
 
 	sys_reset_mode(reset_mode);
 
