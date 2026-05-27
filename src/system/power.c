@@ -336,6 +336,10 @@ static int64_t system_off_timeout = 0;
 
 void sys_request_WOM(bool force, bool immediate)
 {
+	if (plug_read()) {
+		LOG_INF("Skipped WOM request while PLUG_IN is active");
+		return;
+	}
 	if (immediate)
 	{
 		sys_WOM(force);
@@ -370,6 +374,10 @@ void sys_request_system_reboot(bool immediate)
 static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what does the system do?
 {
 	LOG_INF("IMU wake up requested");
+	if (plug_read()) {
+		LOG_INF("Skipped WOM while PLUG_IN is active");
+		return;
+	}
 #if IMU_INT_EXISTS
 #if CONFIG_DELAY_SLEEP_ON_STATUS
 	if (!force && (!esb_ready() || !status_ready())) // Wait for esb to pair in case the user is still trying to pair the device
