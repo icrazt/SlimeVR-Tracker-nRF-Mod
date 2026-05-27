@@ -29,6 +29,10 @@
 
 static uint32_t *dbl_reset_mem __attribute__((unused)) = ((uint32_t *)DFU_DBL_RESET_MEM); // retained
 
+#define CHARGE_DISPLAY_UPDATE_INTERVAL_MS 1000
+#define CHARGE_DISPLAY_BUTTON_POLL_MS 20
+#define CHARGE_DISPLAY_BUTTON_DEBOUNCE_MS 50
+
 enum sys_regulator {
 	SYS_REGULATOR_DCDC,
 	SYS_REGULATOR_LDO
@@ -76,6 +80,15 @@ static enum sys_charge_state charge_state_from_inputs(
 	bool usb_plugged
 );
 static bool charge_display_power_present(void);
+static bool charge_display_button_released_after_press(
+	bool button_pressed,
+	int64_t now,
+	bool *waiting_for_initial_release,
+	int64_t *pressed_since,
+	bool *press_confirmed,
+	int64_t *released_since
+);
+static void charge_display_reboot_to_normal_operation(void);
 static void set_power_led(enum sys_charge_state charge_state, bool low_battery, int16_t battery_pptt);
 static void sys_charge_display_until_unplugged(void);
 static bool battery_pptt_is_valid(int16_t battery_pptt);
@@ -430,6 +443,64 @@ static bool charge_display_power_present(void)
 		!= SYS_CHARGE_STATE_UNPLUGGED;
 }
 
+static bool charge_display_button_released_after_press(
+	bool button_pressed,
+	int64_t now,
+	bool *waiting_for_initial_release,
+	int64_t *pressed_since,
+	bool *press_confirmed,
+	int64_t *released_since
+)
+{
+	if (button_pressed)
+	{
+		*released_since = 0;
+		if (*waiting_for_initial_release)
+			return false;
+		if (!*pressed_since)
+			*pressed_since = now;
+		if (now - *pressed_since >= CHARGE_DISPLAY_BUTTON_DEBOUNCE_MS)
+			*press_confirmed = true;
+		return false;
+	}
+
+	*pressed_since = 0;
+	if (*waiting_for_initial_release)
+	{
+		if (!*released_since)
+			*released_since = now;
+		if (now - *released_since >= CHARGE_DISPLAY_BUTTON_DEBOUNCE_MS)
+		{
+			*waiting_for_initial_release = false;
+			*released_since = 0;
+		}
+		return false;
+	}
+	if (!*press_confirmed)
+	{
+		*released_since = 0;
+		return false;
+	}
+	if (!*released_since)
+	{
+		*released_since = now;
+		return false;
+	}
+	return now - *released_since >= CHARGE_DISPLAY_BUTTON_DEBOUNCE_MS;
+}
+
+static void charge_display_reboot_to_normal_operation(void)
+{
+	LOG_INF("Button pressed during charge display; rebooting to normal operation");
+	reboot_counter_write(100);
+	set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
+	wait_for_logging();
+#if ADAFRUIT_BOOTLOADER
+	(*dbl_reset_mem) = DFU_DBL_RESET_APP;
+#endif
+	sys_reboot(SYS_REBOOT_COLD);
+}
+
 static enum sys_led_color charging_color_for_level(int16_t battery_pptt)
 {
 	if (battery_pptt_is_valid(battery_pptt) && battery_pptt >= 8500)
@@ -475,33 +546,59 @@ static void sys_charge_display_until_unplugged(void)
 	set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
 	set_regulator(SYS_REGULATOR_LDO);
 
+	int64_t next_charge_display_update = 0;
+	bool waiting_for_initial_button_release = button_read();
+	int64_t button_pressed_since = 0;
+	int64_t button_released_since = 0;
+	bool button_press_confirmed = false;
+
 	while (charge_display_power_present())
 	{
-		int battery_mV;
-		int16_t battery_pptt = read_batt_mV(&battery_mV);
-		bool battery_pptt_valid = battery_pptt_is_valid(battery_pptt);
-		enum sys_charge_state charge_state = charge_state_from_inputs(
-			chg_read(),
-			stby_read(),
-			plugged,
-			usb_vbus_detected()
-		);
+		int64_t now = k_uptime_get();
 
-		if (battery_pptt_valid)
+		if (now >= next_charge_display_update)
 		{
-			current_battery_pptt = battery_pptt;
-			calibrated_battery_pptt = sys_get_calibrated_battery_pptt(current_battery_pptt);
-		}
-		if (plug_in_exists())
-			plugged = plug_in_read();
-		else if (!plugged && battery_mV > 4300 && battery_mV <= 6000)
-			plugged = true;
-		else if (plugged && battery_mV <= 4250)
-			plugged = false;
-		sys_update_battery_tracker_voltage(battery_mV, true);
-		set_power_led(charge_state, false, current_battery_pptt);
+			int battery_mV;
+			int16_t battery_pptt = read_batt_mV(&battery_mV);
+			bool battery_pptt_valid = battery_pptt_is_valid(battery_pptt);
+			enum sys_charge_state charge_state = charge_state_from_inputs(
+				chg_read(),
+				stby_read(),
+				plugged,
+				usb_vbus_detected()
+			);
 
-		k_msleep(1000);
+			if (battery_pptt_valid)
+			{
+				current_battery_pptt = battery_pptt;
+				calibrated_battery_pptt = sys_get_calibrated_battery_pptt(current_battery_pptt);
+			}
+			if (plug_in_exists())
+				plugged = plug_in_read();
+			else if (!plugged && battery_mV > 4300 && battery_mV <= 6000)
+				plugged = true;
+			else if (plugged && battery_mV <= 4250)
+				plugged = false;
+			sys_update_battery_tracker_voltage(battery_mV, true);
+			set_power_led(charge_state, false, current_battery_pptt);
+
+			next_charge_display_update = now + CHARGE_DISPLAY_UPDATE_INTERVAL_MS;
+		}
+
+		if (charge_display_button_released_after_press(
+				button_read(),
+				now,
+				&waiting_for_initial_button_release,
+				&button_pressed_since,
+				&button_press_confirmed,
+				&button_released_since
+			))
+		{
+			charge_display_reboot_to_normal_operation();
+			return;
+		}
+
+		k_msleep(CHARGE_DISPLAY_BUTTON_POLL_MS);
 	}
 
 	set_led(SYS_LED_PATTERN_OFF_FORCE, SYS_LED_PRIORITY_HIGHEST);
