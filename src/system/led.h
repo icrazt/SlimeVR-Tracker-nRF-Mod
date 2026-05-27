@@ -3,18 +3,18 @@
 
 /*
 LED priorities (0 is highest)
-0: boot/power
-1: sensor
-2: connection (esb)
-3: status
+0: user/boot
+1: status/error
+2: sensor/calibration
+3: connection (esb)
 4: system (persist)
 */
 
 #define SYS_LED_PRIORITY_HIGHEST 0
 #define SYS_LED_PRIORITY_BOOT 0
-#define SYS_LED_PRIORITY_SENSOR 1
-#define SYS_LED_PRIORITY_CONNECTION 2
-#define SYS_LED_PRIORITY_STATUS 3
+#define SYS_LED_PRIORITY_STATUS 1
+#define SYS_LED_PRIORITY_SENSOR 2
+#define SYS_LED_PRIORITY_CONNECTION 3
 #define SYS_LED_PRIORITY_SYSTEM 4
 #define SYS_LED_PATTERN_DEPTH 5
 
@@ -48,9 +48,9 @@ enum sys_led_pattern {
 	SYS_LED_PATTERN_ONESHOT_PING,     // 200ms on 200ms off, 10 times				// Ping
 
 	SYS_LED_PATTERN_ON_PERSIST,     // 20% duty cycle									// Success | indicates charged
-	SYS_LED_PATTERN_LONG_PERSIST,   // 20% duty cycle, 500ms on 500ms off				// Charging| indicates low battery
-	SYS_LED_PATTERN_PULSE_PERSIST,  // 5000ms pulsing								// Charging| indicates charging
-	SYS_LED_PATTERN_ACTIVE_PERSIST, // 300ms on 9700ms off							// Default | indicates normal
+	SYS_LED_PATTERN_LONG_PERSIST,   // 20% duty cycle, 500ms on 4500ms off			// Low battery
+	SYS_LED_PATTERN_PULSE_PERSIST,  // 5000ms pulsing								// Charging | indicates charging
+	SYS_LED_PATTERN_ACTIVE_PERSIST, // off											// Default | indicates normal
 									// operation
 
 	SYS_LED_PATTERN_ERROR_A, // 500ms on 500ms off, 2 times, every 5000ms			// Error
@@ -65,6 +65,10 @@ enum sys_led_color {
 	SYS_LED_COLOR_ERROR,
 	SYS_LED_COLOR_CHARGING,
 	SYS_LED_COLOR_PAIRING,
+	SYS_LED_COLOR_CALIBRATION,
+	SYS_LED_COLOR_CONNECTION_ERROR,
+	SYS_LED_COLOR_LOW_BATTERY,
+	SYS_LED_COLOR_COUNT,
 };
 
 void set_led(enum sys_led_pattern led_pattern, int priority);

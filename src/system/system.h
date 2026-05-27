@@ -36,6 +36,15 @@
 
 void configure_sense_pins(void);
 
+enum sys_poweroff_context {
+	SYS_POWEROFF_CONTEXT_NONE = 0,
+	SYS_POWEROFF_CONTEXT_USER = 1,
+	SYS_POWEROFF_CONTEXT_USER_PLUGGED = 2,
+};
+
+enum sys_poweroff_context sys_get_poweroff_context(void);
+void sys_set_poweroff_context(enum sys_poweroff_context context);
+
 uint8_t reboot_counter_read(void);
 void reboot_counter_write(uint8_t reboot_counter);
 
@@ -49,6 +58,7 @@ int set_sensor_clock(bool enable, float rate, float* actual_rate);
 bool button_read(void);
 
 bool dock_read(void);
+bool plug_read(void);
 bool chg_read(void);
 bool stby_read(void);
 

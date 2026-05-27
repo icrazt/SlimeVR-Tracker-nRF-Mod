@@ -870,6 +870,7 @@ static void sensor_update_sensor_state(void)
 	bool calibrating = get_status(SYS_STATUS_CALIBRATION_RUNNING);
 	bool resting = sensor_fusion->get_gyro_sanity() == 0 ? q_epsilon(q, last_q, 0.005) : q_epsilon(q, last_q, 0.05); // TODO: Probably okay to use the constantly updating last_q?
 	bool in_test_mode = test_mode_get();
+	bool plug_detected = plug_read();
 	if (!in_test_mode && !calibrating && resting)
 	{
 		int64_t last_data_delta = k_uptime_get() - last_data_time;
@@ -893,24 +894,32 @@ static void sensor_update_sensor_state(void)
 		}
 		if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_ACTIVITY && last_data_delta > CONFIG_ACTIVE_TIMEOUT_DELAY)
 		{
-			LOG_INF("No motion from sensors in %dm", CONFIG_ACTIVE_TIMEOUT_DELAY / 60000);
 #if CONFIG_SLEEP_ON_ACTIVE_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
-			// Queue power state request, it is possible for the request to be overridden so the thread may continue unaware
-			sys_request_WOM(true, false);
+			if (!plug_detected) {
+				LOG_INF("No motion from sensors in %dm", CONFIG_ACTIVE_TIMEOUT_DELAY / 60000);
+				// Queue power state request, it is possible for the request to be overridden so the thread may continue unaware
+				sys_request_WOM(true, false);
+				sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED; // only try to suspend once
+			}
 #elif CONFIG_SHUTDOWN_ON_ACTIVE_TIMEOUT && CONFIG_USER_SHUTDOWN
+			LOG_INF("No motion from sensors in %dm", CONFIG_ACTIVE_TIMEOUT_DELAY / 60000);
 			// Queue power state request, thread will be suspended when entering system_off
 			sys_request_system_off(false);
-#endif
 			sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED; // only try to suspend once
+#else
+			sensor_timeout = SENSOR_SENSOR_TIMEOUT_ACTIVITY_ELAPSED; // preserve old no-action timeout behavior
+#endif
 		}
 #endif
 #if CONFIG_USE_IMU_TIMEOUT && CONFIG_USE_IMU_WAKE_UP
 		if (sensor_timeout == SENSOR_SENSOR_TIMEOUT_IMU && last_data_delta > imu_timeout) // No motion in ramp time
 		{
-			LOG_INF("No motion from sensors in %llds", imu_timeout / 1000);
-			// Queue power state request
-			sys_request_WOM(false, false);
-			sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED; // only try to suspend once
+			if (!plug_detected) {
+				LOG_INF("No motion from sensors in %llds", imu_timeout / 1000);
+				// Queue power state request
+				sys_request_WOM(false, false);
+				sensor_timeout = SENSOR_SENSOR_TIMEOUT_IMU_ELAPSED; // only try to suspend once
+			}
 		}
 #endif
 	}

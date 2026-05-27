@@ -53,6 +53,12 @@ static const struct gpio_dt_spec dock = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, dock_
 #else
 #pragma message "Dock sense GPIO does not exist"
 #endif
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, plug_gpios)
+#define PLUG_EXISTS true
+static const struct gpio_dt_spec plug = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, plug_gpios);
+#else
+#pragma message "Plug sense GPIO does not exist"
+#endif
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, chg_gpios)
 #define CHG_EXISTS true
 static const struct gpio_dt_spec chg = GPIO_DT_SPEC_GET(ZEPHYR_USER_NODE, chg_gpios);
@@ -86,10 +92,24 @@ static const struct pwm_dt_spec clk_out = {0};
 static const struct device *gpio_dev = DEVICE_DT_GET(DT_NODELABEL(gpio0));
 #endif
 
+enum sys_poweroff_context sys_get_poweroff_context(void)
+{
+	if (retained->poweroff_context > SYS_POWEROFF_CONTEXT_USER_PLUGGED) {
+		return SYS_POWEROFF_CONTEXT_NONE;
+	}
+	return retained->poweroff_context;
+}
+
+void sys_set_poweroff_context(enum sys_poweroff_context context)
+{
+	retained->poweroff_context = context;
+}
+
 void configure_sense_pins(void)
 {
 	// Configure dock sense
 	bool docked = dock_read();
+	bool plugged_user_off = sys_get_poweroff_context() == SYS_POWEROFF_CONTEXT_USER_PLUGGED;
 #if DOCK_EXISTS
 	if (docked) {
 		nrf_gpio_cfg_input(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, dock_gpios), NRF_GPIO_PIN_NOPULL); // Still works
@@ -100,11 +120,19 @@ void configure_sense_pins(void)
 	}
 	LOG_INF("Configured dock sense");
 #endif
+#if PLUG_EXISTS
+	nrf_gpio_cfg_input(NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_gpios), NRF_GPIO_PIN_PULLUP);
+	nrf_gpio_cfg_sense_set(
+		NRF_DT_GPIOS_TO_PSEL(ZEPHYR_USER_NODE, plug_gpios),
+		plug_read() ? NRF_GPIO_PIN_SENSE_HIGH : NRF_GPIO_PIN_SENSE_LOW
+	);
+	LOG_INF("Configured plug sense");
+#endif
 	// Configure chgstat sense
 	if (!docked) {
-		bool ignore_charge_wake = IGNORE_CHARGE_WAKE_ON_VBUS && vbus_read();
+		bool ignore_charge_wake = plugged_user_off || (IGNORE_CHARGE_WAKE_ON_VBUS && vbus_read());
 		if (ignore_charge_wake) {
-			LOG_INF("Skipped charge wake sense while VBUS is present");
+			LOG_INF("Skipped charge wake sense");
 		}
 #if CHG_EXISTS
 		if (!ignore_charge_wake) {
@@ -495,6 +523,9 @@ static int sys_gpio_init(void)
 #if CHG_EXISTS
 	gpio_pin_configure_dt(&chg, GPIO_INPUT);
 #endif
+#if PLUG_EXISTS
+	gpio_pin_configure_dt(&plug, GPIO_INPUT);
+#endif
 #if STBY_EXISTS
 	gpio_pin_configure_dt(&stby, GPIO_INPUT);
 #endif
@@ -516,6 +547,15 @@ bool dock_read(void)
 {
 #if DOCK_EXISTS
 	return gpio_pin_get_dt(&dock);
+#else
+	return false;
+#endif
+}
+
+bool plug_read(void)
+{
+#if PLUG_EXISTS
+	return gpio_pin_get_dt(&plug);
 #else
 	return false;
 #endif
@@ -545,6 +585,9 @@ int sys_user_shutdown(void)
 #if USER_SHUTDOWN_ENABLED
 	LOG_INF("User shutdown requested");
 	reboot_counter_write(0);
+	sys_set_poweroff_context(
+		plug_read() ? SYS_POWEROFF_CONTEXT_USER_PLUGGED : SYS_POWEROFF_CONTEXT_USER
+	);
 	set_led(SYS_LED_PATTERN_ONESHOT_POWEROFF, SYS_LED_PRIORITY_HIGHEST);
 #endif
 	k_msleep(1500);
@@ -561,6 +604,7 @@ int sys_user_shutdown(void)
 			}
 			if (k_uptime_get() - start_time > 4000) // held for over 5 seconds, cancel shutdown
 			{
+				sys_set_poweroff_context(SYS_POWEROFF_CONTEXT_NONE);
 				set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
 				return 1;
 			}
@@ -580,6 +624,9 @@ void sys_command_shutdown(void)
 {
 	LOG_INF("Command shutdown requested");
 	reboot_counter_write(0);
+	sys_set_poweroff_context(
+		plug_read() ? SYS_POWEROFF_CONTEXT_USER_PLUGGED : SYS_POWEROFF_CONTEXT_USER
+	);
 	set_led(SYS_LED_PATTERN_ONESHOT_POWEROFF, SYS_LED_PRIORITY_HIGHEST);
 	k_msleep(1500);
 	sys_request_system_off(false);

@@ -66,6 +66,9 @@ K_THREAD_DEFINE(power_thread_id, 1024, power_thread, NULL, NULL, NULL, 6, 0, 0);
 
 #define ZEPHYR_USER_NODE DT_PATH(zephyr_user)
 
+#if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, plug_gpios)
+#define PLUG_EXISTS true
+#endif
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, int0_gpios)
 #define IMU_INT_EXISTS true
 #else
@@ -333,6 +336,10 @@ static int64_t system_off_timeout = 0;
 
 void sys_request_WOM(bool force, bool immediate)
 {
+	if (plug_read()) {
+		LOG_INF("Skipped WOM request while PLUG_IN is active");
+		return;
+	}
 	if (immediate)
 	{
 		sys_WOM(force);
@@ -367,6 +374,10 @@ void sys_request_system_reboot(bool immediate)
 static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what does the system do?
 {
 	LOG_INF("IMU wake up requested");
+	if (plug_read()) {
+		LOG_INF("Skipped WOM while PLUG_IN is active");
+		return;
+	}
 #if IMU_INT_EXISTS
 #if CONFIG_DELAY_SLEEP_ON_STATUS
 	if (!force && (!esb_ready() || !status_ready())) // Wait for esb to pair in case the user is still trying to pair the device
@@ -634,8 +645,16 @@ static void power_thread(void)
 		sys_power_state_request(-1); // clear request
 
 		bool docked = dock_read();
-		bool charging = chg_read();
-		bool charged = stby_read();
+		bool plug_detected = plug_read();
+		bool charging;
+		bool charged;
+#if PLUG_EXISTS
+		charging = plug_detected && chg_read();
+		charged = plug_detected && !chg_read();
+#else
+		charging = chg_read();
+		charged = stby_read();
+#endif
 
 		int battery_mV;
 		int16_t battery_pptt = read_batt_mV(&battery_mV);
@@ -649,10 +668,14 @@ static void power_thread(void)
 		bool battery_available = battery_mV > 1500 && !abnormal_reading; // Keep working without the battery connected, otherwise it is obviously too dead to boot system
 		bool battery_discharged = battery_available && (average_pptt >= 0 ? average_pptt : battery_pptt) == 0;
 		// Separate detection of vin
+#if PLUG_EXISTS
+		plugged = plug_detected;
+#else
 		if (!plugged && battery_mV > 4300 && !abnormal_reading)
 			plugged = true;
 		else if ((plugged && battery_mV <= 4250) || abnormal_reading)
 			plugged = false;
+#endif
 #ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
 		bool usb_plugged = NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk;
 #else
@@ -724,17 +747,29 @@ static void power_thread(void)
 			battery_mV
 		);
 
+		static int64_t charged_led_start = 0;
+		if (!charged) {
+			charged_led_start = 0;
+		}
+
 		if (charging)
 			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-		else if (charged)
-			set_led(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_PRIORITY_SYSTEM);
+		else if (charged) {
+			if (!charged_led_start) {
+				charged_led_start = k_uptime_get();
+			}
+			if (k_uptime_get() - charged_led_start < 600000) {
+				set_led(SYS_LED_PATTERN_ON_PERSIST, SYS_LED_PRIORITY_SYSTEM);
+			} else {
+				set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SYSTEM);
+			}
+		}
 		else if (plugged || usb_plugged)
 			set_led(SYS_LED_PATTERN_PULSE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
 		else if (battery_low)
 			set_led(SYS_LED_PATTERN_LONG_PERSIST, SYS_LED_PRIORITY_SYSTEM);
 		else
-			set_led(SYS_LED_PATTERN_ACTIVE_PERSIST, SYS_LED_PRIORITY_SYSTEM);
-//			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SYSTEM);
+			set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SYSTEM);
 
 		/* Feed watchdog at end of each loop iteration */
 		watchdog_feed(WDT_CHANNEL_POWER);

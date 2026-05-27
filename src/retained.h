@@ -132,6 +132,9 @@ struct retained_data {
 	 * watchdog state which must persist across unexpected resets.
 	 */
 
+	uint8_t poweroff_context;
+	uint8_t reserved_after_crc[3];
+
 	// Watchdog state (persists across WDT resets, outside CRC validation)
 	struct {
 		uint8_t reset_count;           // WDT consecutive reset count
