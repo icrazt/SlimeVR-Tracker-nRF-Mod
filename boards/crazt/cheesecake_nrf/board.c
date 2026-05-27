@@ -16,8 +16,27 @@
 #define SYSOFF_GPIO_PORT_NUM DT_PROP(DT_GPIO_CTLR(ZEPHYR_USER_NODE, sysoff_gpios), port)
 #define SYSOFF_GPIO NRF_GPIO_PIN_MAP(SYSOFF_GPIO_PORT_NUM, SYSOFF_GPIO_PIN)
 
+#define HEAT_EN_GPIO_PIN DT_GPIO_PIN(ZEPHYR_USER_NODE, heat_en_gpios)
+#define HEAT_EN_GPIO_PORT_NUM DT_PROP(DT_GPIO_CTLR(ZEPHYR_USER_NODE, heat_en_gpios), port)
+#define HEAT_EN_GPIO NRF_GPIO_PIN_MAP(HEAT_EN_GPIO_PORT_NUM, HEAT_EN_GPIO_PIN)
+
+static void board_heat_en_off(void)
+{
+	nrf_gpio_pin_clear(HEAT_EN_GPIO);
+	nrf_gpio_cfg(
+		HEAT_EN_GPIO,
+		NRF_GPIO_PIN_DIR_OUTPUT,
+		NRF_GPIO_PIN_INPUT_DISCONNECT,
+		NRF_GPIO_PIN_NOPULL,
+		NRF_GPIO_PIN_S0S1,
+		NRF_GPIO_PIN_NOSENSE
+	);
+}
+
 void board_early_init_hook(void)
 {
+	board_heat_en_off();
+
 	if ((nrf_power_mainregstatus_get(NRF_POWER) == NRF_POWER_MAINREGSTATUS_HIGH) &&
 	    ((NRF_UICR->REGOUT0 & UICR_REGOUT0_VOUT_Msk) ==
 	     (UICR_REGOUT0_VOUT_DEFAULT << UICR_REGOUT0_VOUT_Pos))) {
@@ -41,6 +60,8 @@ void board_early_init_hook(void)
 
 static int board_cheesecake_nrf_init(void)
 {
+	board_heat_en_off();
+
 	/*
 	 * P1.13 is active-high for external power cutoff. Keep it inactive/low
 	 * during normal operation and through nRF System OFF GPIO retention.
