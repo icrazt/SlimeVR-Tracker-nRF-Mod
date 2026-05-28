@@ -8,6 +8,7 @@
 #include "heater.h"
 #include "led.h"
 #include "connection/esb.h"
+#include "system/esb_ota.h"
 #include "watchdog.h"
 
 #include <zephyr/drivers/gpio.h>
@@ -380,6 +381,11 @@ static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what do
 		LOG_INF("Skipped WOM while PLUG_IN is active");
 		return;
 	}
+	/* Block sleep during OTA (active or suppressed) */
+	if (esb_ota_is_active() || connection_get_ota_suppressed()) {
+		LOG_INF("IMU wake up blocked by OTA");
+		return;
+	}
 #if IMU_INT_EXISTS
 #if CONFIG_DELAY_SLEEP_ON_STATUS
 	if (!force && (!esb_ready() || !status_ready())) // Wait for esb to pair in case the user is still trying to pair the device
@@ -429,6 +435,11 @@ static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what do
 static void sys_system_off(void) // TODO: add timeout
 {
 	LOG_INF("System off requested");
+	/* Block shutdown during OTA (active or suppressed) */
+	if (esb_ota_is_active() || connection_get_ota_suppressed()) {
+		LOG_INF("System off blocked by OTA");
+		return;
+	}
 	configure_system_off(); // Common subsystem shutdown and prepare sense pins
 	sensor_calibration_online_mag_cold_start();
 #if CONFIG_SENSOR_USE_TCAL

@@ -70,7 +70,8 @@ LOG_MODULE_REGISTER(esb_ota, LOG_LEVEL_INF);
 #error "CONFIG_FLASH_LOAD_OFFSET must be defined by board defconfig"
 #endif
 
-#define OTA_FLASH_BASE      CONFIG_FLASH_LOAD_OFFSET
+/* MBR occupies 0x0-0x1000 and must not be overwritten via OTA */
+#define OTA_FLASH_BASE      MAX(CONFIG_FLASH_LOAD_OFFSET, 0x1000)
 #define OTA_FLASH_PAGE_SIZE  4096
 
 /*
@@ -200,6 +201,17 @@ int esb_ota_handle_begin(const uint8_t *data, size_t len)
 		LOG_ERR("OTA BEGIN: packet too short (%zu)", len);
 		return -EINVAL;
 	}
+
+	/* nRF5 OpenDFU bootloader sets ACL write-protection on the app region,
+	 * preventing in-place flash copy.  Reject OTA early. */
+#if CONFIG_BOARD_HAS_NRF5_BOOTLOADER && !CONFIG_BUILD_OUTPUT_UF2
+	LOG_ERR("OTA: blocked — nRF5 OpenDFU bootloader ACL write-protects "
+		"app region. Use DFU/SWD to update this device.");
+	ota.state = OTA_STATE_ERROR;
+	ota.error_code = OTA_STATUS_ERROR;
+	ota_send_status();
+	return -ENOTSUP;
+#endif
 
 	/* Reject duplicate BEGIN if already in progress */
 	if (ota.state != OTA_STATE_IDLE && ota.state != OTA_STATE_ERROR &&
