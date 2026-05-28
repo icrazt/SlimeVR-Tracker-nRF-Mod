@@ -369,7 +369,7 @@ config SYSTEM_IMU_HEATER
 
 config SYSTEM_IMU_HEATER_MAX_DUTY_PPTT
     int "IMU heater maximum duty (parts per ten thousand)"
-    default 6000
+    default 9500
     depends on SYSTEM_IMU_HEATER
     range 0 10000
 

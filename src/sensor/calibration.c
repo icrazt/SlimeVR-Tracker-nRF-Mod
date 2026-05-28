@@ -3854,6 +3854,11 @@ void sensor_tcal_heated_stop(void)
 	tcal_heated_stop_internal(TCAL_HEATED_STOP_USER, true);
 }
 
+void sensor_tcal_heated_abort(void)
+{
+	tcal_heated_stop_internal(TCAL_HEATED_STOP_USER, false);
+}
+
 int sensor_tcal_heated_set_open_loop_duty(uint16_t duty_pptt)
 {
 	tcal_heated_init_tuning();

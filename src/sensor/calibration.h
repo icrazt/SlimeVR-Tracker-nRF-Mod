@@ -92,6 +92,7 @@ void sensor_tcal_continuous_motion_detected(void);
 bool sensor_tcal_heated_is_active(void);
 int sensor_tcal_heated_start(float target_temp);
 void sensor_tcal_heated_stop(void);
+void sensor_tcal_heated_abort(void);
 void sensor_tcal_heated_update(bool is_resting);
 void sensor_tcal_heated_status(void);
 int sensor_tcal_heated_tune(const char *param, float value);

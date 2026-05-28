@@ -8,6 +8,7 @@
 #include "connection/esb.h"
 #include "connection/tdma.h"
 #include "build_defines.h"
+#include "system/heater.h"
 #include "zephyr/sys/printk.h"
 
 #if CONFIG_USB_DEVICE_STACK
@@ -473,7 +474,7 @@ static void print_help(void)
 	// Update the help string to show the new command set
 	printk("  tcal <on|off|status|dump|test temp|remove index|auto on|auto off> Temperature calibration\n");
 #if CONFIG_SENSOR_TCAL_HEATED
-	printk("  tcal heat <start [temp]|stop|status|duty pptt|tune kp|ki|kff value> Heated T-Cal\n");
+	printk("  tcal heat <start [temp]|stop|status|duty pptt|raw pptt|tune kp|ki|kff value> Heated T-Cal\n");
 #endif
 #endif
 	printk("\n");
@@ -887,6 +888,30 @@ static void console_thread(void)
 						} else {
 							printk("Heated T-Cal open-loop duty set to %ld pptt.\n", duty);
 						}
+					} else if (strcmp(heat_arg, "raw") == 0) {
+						char *duty_str = strtok(NULL, " ");
+						if (duty_str == NULL) {
+							printk("Error: Missing duty. Use: tcal heat raw <pptt>\n");
+							continue;
+						}
+						char *endptr = NULL;
+						long duty = strtol(duty_str, &endptr, 10);
+						if (endptr == duty_str || *endptr != '\0' || duty < 0 || duty > 10000) {
+							printk("Error: Invalid duty '%s'. Use 0..10000 pptt.\n", duty_str);
+							continue;
+						}
+						sensor_tcal_heated_abort();
+						int err = heater_set_duty_pptt((uint16_t)duty);
+						if (err) {
+							printk("Error: Raw heater duty failed (%d).\n", err);
+						} else {
+							struct heater_status heater_status;
+							heater_get_status(&heater_status);
+							printk("Raw heater duty set to %ld pptt (%u / %u actual).\n",
+								duty,
+								heater_status.duty_pptt,
+								heater_status.max_duty_pptt);
+						}
 					} else if (strcmp(heat_arg, "tune") == 0) {
 						char *param = strtok(NULL, " ");
 						char *value_str = strtok(NULL, " ");
@@ -907,7 +932,7 @@ static void console_thread(void)
 							printk("Heated T-Cal tune updated: %s = %.4f\n", param, (double)value);
 						}
 					} else {
-						printk("Error: Invalid heat command '%s'. Use: tcal heat <start [temp]|stop|status|duty pptt|tune kp|ki|kff value>\n", heat_arg);
+						printk("Error: Invalid heat command '%s'. Use: tcal heat <start [temp]|stop|status|duty pptt|raw pptt|tune kp|ki|kff value>\n", heat_arg);
 					}
 #else
 				} else if (strcmp(subcmd, "heat") == 0) {
