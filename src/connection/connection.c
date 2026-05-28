@@ -32,6 +32,7 @@
 #include "system/battery_tracker.h"
 #include "system/watchdog.h"
 #include "system/test_mode.h"
+#include "system/esb_ota.h"
 
 #include <math.h>
 #include <stdbool.h>
@@ -471,13 +472,17 @@ K_MSGQ_DEFINE(raw_imu_msgq, sizeof(struct raw_imu_queued), RAW_IMU_QUEUE_SIZE, 4
 
 static uint16_t raw_sequence = 0;
 static bool data_collection_active = false;
+static volatile bool ota_suppressed = false;  /* Reduce poll rate during parallel OTA */
+static int64_t ota_suppress_start_time = 0;   /* Timestamp when suppress was enabled */
+#define OTA_SUPPRESS_TIMEOUT_MS (10 * 60 * 1000)
 
 /*
  * ARQ ring buffer: stores last RAW_RING_SIZE sent packets for retransmission.
  * Indexed by (sequence % RAW_RING_SIZE).
  */
 #define RAW_RING_SIZE 512
-static uint8_t raw_ring[RAW_RING_SIZE][ESB_MAX_PAYLOAD_LEN];
+#define RAW_PACKET_SIZE 48  /* Fixed raw data packet size (independent of ESB max) */
+static uint8_t raw_ring[RAW_RING_SIZE][RAW_PACKET_SIZE];
 static bool    raw_ring_valid[RAW_RING_SIZE];
 
 /*
@@ -520,6 +525,17 @@ bool connection_get_data_collection(void)
 	return data_collection_active;
 }
 
+void connection_set_ota_suppressed(bool suppressed)
+{
+	ota_suppressed = suppressed;
+	if (suppressed) {
+		ota_suppress_start_time = k_uptime_get();
+	} else {
+		ota_suppress_start_time = 0;
+	}
+	LOG_INF("OTA suppression %s", suppressed ? "ENABLED (slow poll)" : "DISABLED (normal poll)");
+}
+
 void connection_queue_raw_sample(const struct raw_imu_sample *sample)
 {
 	if (!data_collection_active) return;
@@ -549,7 +565,7 @@ void connection_send_raw_metadata(float gyro_range, float accel_range,
 				  float gyro_odr, float accel_odr,
 				  float mag_odr, uint8_t imu, uint8_t mag)
 {
-	uint8_t buf[ESB_MAX_PAYLOAD_LEN];
+	uint8_t buf[RAW_PACKET_SIZE];
 	memset(buf, 0, sizeof(buf));
 	buf[0] = ESB_RAW_META_TYPE;
 	buf[1] = tracker_id;
@@ -561,7 +577,7 @@ void connection_send_raw_metadata(float gyro_range, float accel_range,
 	buf[22] = imu;
 	buf[23] = mag;
 
-	esb_write(buf, false, ESB_MAX_PAYLOAD_LEN);
+	esb_write(buf, false, RAW_PACKET_SIZE);
 	raw_metadata_sent = true;
 	raw_metadata_last_ms = k_uptime_get();
 }
@@ -591,7 +607,7 @@ bool connection_process_raw_data(void)
 
 		if (raw_ring_valid[idx]) {
 			/* Retransmit from ring buffer */
-			esb_write(raw_ring[idx], false, ESB_MAX_PAYLOAD_LEN);
+			esb_write(raw_ring[idx], false, RAW_PACKET_SIZE);
 			raw_retx_total++;
 		}
 
@@ -608,7 +624,7 @@ bool connection_process_raw_data(void)
 	/* Priority 2: Send new IMU sample */
 	struct raw_imu_queued sample;
 	if (k_msgq_get(&raw_imu_msgq, &sample, K_NO_WAIT) == 0) {
-		uint8_t buf[ESB_MAX_PAYLOAD_LEN];
+		uint8_t buf[RAW_PACKET_SIZE];
 		memset(buf, 0, sizeof(buf));
 
 		buf[0] = ESB_RAW_IMU_TYPE;
@@ -641,10 +657,10 @@ bool connection_process_raw_data(void)
 
 		/* Save to ring buffer for potential retransmission */
 		uint16_t ring_idx = seq % RAW_RING_SIZE;
-		memcpy(raw_ring[ring_idx], buf, ESB_MAX_PAYLOAD_LEN);
+		memcpy(raw_ring[ring_idx], buf, RAW_PACKET_SIZE);
 		raw_ring_valid[ring_idx] = true;
 
-		esb_write(buf, false, ESB_MAX_PAYLOAD_LEN);
+		esb_write(buf, false, RAW_PACKET_SIZE);
 		return true;
 	}
 
@@ -758,6 +774,13 @@ void connection_thread(void)
 			continue;
 		}
 
+		/*
+		 * Process OTA packets queued from ESB ISR (safe in thread context).
+		 * Must run before esb_ota_is_active() check since BEGIN activates OTA.
+		 * Also must run before PING to process ACK payloads from previous PINGs.
+		 */
+		esb_process_ota_rx_queue();
+
 		/* PING has highest priority.
 		 *
 		 * When TDMA is enabled and the last sync is getting stale
@@ -792,6 +815,33 @@ void connection_thread(void)
 			last_ping_time = now;
 			// k_usleep(400);
 			continue;
+		}
+
+		/*
+		 * ESB OTA mode: when active, stop sending sensor data and instead
+		 * send frequent OTA status/poll packets. The receiver responds
+		 * with OTA data in the ACK payload.
+		 */
+		if (esb_ota_is_active()) {
+			esb_ota_check_timeout();
+			esb_ota_periodic_status();
+			k_msleep(2);
+			continue;
+		}
+
+		/*
+		 * OTA suppression: when another tracker is being updated,
+		 * this tracker reduces its poll rate to free radio bandwidth.
+		 */
+		if (ota_suppressed) {
+			/* Safety timeout: auto-unsuppress after timeout */
+			if (ota_suppress_start_time > 0 &&
+			    (now - ota_suppress_start_time) > OTA_SUPPRESS_TIMEOUT_MS) {
+				LOG_WRN("OTA suppress timeout, auto-unsuppressing");
+				connection_set_ota_suppressed(false);
+			} else {
+				k_msleep(100); /* ~10 Hz poll rate */
+			}
 		}
 
 		/* Skip sensor data during connection error */
