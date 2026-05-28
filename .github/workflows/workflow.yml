@@ -21,6 +21,7 @@ permissions: write-all
 env:
   ZEPHYR_SDK_VERSION: "0.17.4"
   BLE_OTA_DEV_TYPE: "0x0052"
+  TZ: "Asia/Shanghai"
 
 jobs:
   setup:
