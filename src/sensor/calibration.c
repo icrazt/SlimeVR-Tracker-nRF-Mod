@@ -983,12 +983,12 @@ void sensor_request_calibration_mag(void)
 	// LED sequence before calibration:
 	// 1. Flash LED to let user identify tracker
 	LOG_INF("Magnetometer calibration: identify tracker");
-	set_led(SYS_LED_PATTERN_LONG, SYS_LED_PRIORITY_SENSOR);
+	set_led_color(SYS_LED_PATTERN_LONG, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 	k_msleep(2000);  // Wait for pattern to complete
 
 	// 2. Flash twice to indicate calibration is starting
 	//    SYS_LED_PATTERN_ONESHOT_PROGRESS: 200ms on + 200ms off, 2 times = 800ms
-	set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_SENSOR);
+	set_led_color(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
 	k_msleep(800);
 
 	// Start fresh calibration
@@ -1095,14 +1095,14 @@ static void sensor_calibrate_imu()
 	LOG_INF("Calibrating main accelerometer and gyroscope zero rate offset");
 	LOG_INF("Rest the device on a stable surface");
 
-	set_led(SYS_LED_PATTERN_LONG, SYS_LED_PRIORITY_SENSOR);
+	set_led_color(SYS_LED_PATTERN_LONG, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 	if (!wait_for_motion(false, 6)) // Wait for accelerometer to settle, timeout 3s
 	{
 		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_SENSOR);
 		return; // Timeout, calibration failed
 	}
 
-	set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_SENSOR);
+	set_led_color(SYS_LED_PATTERN_BREATH_FAST, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 	k_msleep(500); // Delay before beginning acquisition
 
 #if CONFIG_SENSOR_USE_TCAL
@@ -2230,7 +2230,11 @@ int sensor_6_sideBias(float a_inv[][3], int *captured_count_out)
 	while (captured_count < CALIB_TARGET_SAMPLES) {
 
 		// 1. Wait for device to be stationary
-		set_led(SYS_LED_PATTERN_LONG, SYS_LED_PRIORITY_SENSOR); // Indicate searching for stationary state
+		set_led_color(
+			SYS_LED_PATTERN_LONG,
+			SYS_LED_COLOR_CALIBRATION,
+			SYS_LED_PRIORITY_SENSOR
+		); // Indicate searching for stationary state
 		bool pose_timeout = false;
 		while (1) {
 			/* Feed watchdog during user interaction wait */
@@ -2294,7 +2298,7 @@ int sensor_6_sideBias(float a_inv[][3], int *captured_count_out)
 					break;
 				} else {
 					// Duplicate pose detected, briefly flash LED to prompt user to change orientation, but do not error
-					set_led(SYS_LED_PATTERN_FLASH, SYS_LED_PRIORITY_SENSOR);
+					set_led_color(SYS_LED_PATTERN_FLASH, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 					k_msleep(100); // Debounce slightly
 				}
 			}
@@ -2314,7 +2318,7 @@ int sensor_6_sideBias(float a_inv[][3], int *captured_count_out)
 		last_new_pose_time = k_uptime_get();
 
 		LOG_INF("Capturing pose %d/%d...", captured_count + 1, CALIB_TARGET_SAMPLES);
-		set_led(SYS_LED_PATTERN_ON, SYS_LED_PRIORITY_SENSOR);
+		set_led_color(SYS_LED_PATTERN_BREATH_FAST, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 
 		int sample_idx = 0;
 		while (sample_idx < SAMPLES_PER_ORIENTATION) {
@@ -2345,7 +2349,7 @@ int sensor_6_sideBias(float a_inv[][3], int *captured_count_out)
 		}
 
 		captured_count++;
-		set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_SENSOR);
+		set_led_color(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
 		LOG_INF("Pose %d saved!", captured_count);
 
 		k_msleep(500);
@@ -2449,7 +2453,7 @@ static void sensor_sample_mag_magneto_sample(const float m[3])
 		// Require minimum directional coverage before attempting calibration
 		if (min_range < MAG_CAL_MIN_DIR_RANGE) {
 			LOG_INF("Mag cal: need more rotation, keep turning");
-			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_SENSOR);
+			set_led_color(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
 			return;
 		}
 
@@ -2457,11 +2461,11 @@ static void sensor_sample_mag_magneto_sample(const float m[3])
 			magneto_progress |= 0b01111111;
 			LOG_INF("Mag cal ready: %d samples, min_range=%.2f",
 			        (int)sample_count, (double)min_range);
-			set_led(SYS_LED_PATTERN_FLASH, SYS_LED_PRIORITY_SENSOR);
+			set_led_color(SYS_LED_PATTERN_FLASH, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
 		} else {
 			LOG_INF("Mag cal: not ready yet, keep rotating (%d samples)",
 			        (int)sample_count);
-			set_led(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_PRIORITY_SENSOR);
+			set_led_color(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
 		}
 	}
 }
@@ -3528,6 +3532,54 @@ static const char *tcal_heated_stop_reason_name(tcal_heated_stop_reason_t reason
 	}
 }
 
+static void tcal_heated_update_led(void)
+{
+	if (!tcal_heated.active) {
+		return;
+	}
+
+	switch (tcal_heated.state) {
+	case TCAL_HEATED_STATE_RAMP:
+		set_led_color(SYS_LED_PATTERN_BREATH_SLOW, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
+		break;
+	case TCAL_HEATED_STATE_HOLD:
+		set_led_color(
+			SYS_LED_PATTERN_BREATH_FAST,
+			tcal_heated.stable_start_time > 0 ? SYS_LED_COLOR_CALIBRATION_STABLE : SYS_LED_COLOR_CALIBRATION,
+			SYS_LED_PRIORITY_SENSOR
+		);
+		break;
+	case TCAL_HEATED_STATE_MOTION_HOLD:
+		set_led_color(SYS_LED_PATTERN_ERROR_A, SYS_LED_COLOR_CALIBRATION, SYS_LED_PRIORITY_SENSOR);
+		break;
+	case TCAL_HEATED_STATE_OPEN_LOOP:
+		set_led_color(SYS_LED_PATTERN_BREATH_SLOW, SYS_LED_COLOR_DEBUG, SYS_LED_PRIORITY_SENSOR);
+		break;
+	case TCAL_HEATED_STATE_STOPPED:
+	case TCAL_HEATED_STATE_IDLE:
+	default:
+		break;
+	}
+}
+
+static void tcal_heated_signal_stop_led(tcal_heated_stop_reason_t reason)
+{
+	switch (reason) {
+	case TCAL_HEATED_STOP_COMPLETE:
+		set_led_color(SYS_LED_PATTERN_ONESHOT_COMPLETE, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
+		break;
+	case TCAL_HEATED_STOP_USER:
+	case TCAL_HEATED_STOP_TIMEOUT:
+		set_led_color(SYS_LED_PATTERN_ONESHOT_PROGRESS, SYS_LED_COLOR_SUCCESS, SYS_LED_PRIORITY_SENSOR);
+		break;
+	case TCAL_HEATED_STOP_NONE:
+		break;
+	default:
+		set_led_color(SYS_LED_PATTERN_ONESHOT_ERROR, SYS_LED_COLOR_ERROR, SYS_LED_PRIORITY_SENSOR);
+		break;
+	}
+}
+
 static void tcal_heated_init_tuning(void)
 {
 	if (tcal_heated_tuning_initialized) {
@@ -3844,6 +3896,9 @@ static void tcal_heated_stop_internal(tcal_heated_stop_reason_t reason, bool com
 	}
 
 	if (was_active) {
+		if (!(reason == TCAL_HEATED_STOP_USER && !commit_staged)) {
+			tcal_heated_signal_stop_led(reason);
+		}
 		sensor_tcal_set_auto_calibration(previous_auto);
 	}
 
@@ -3877,6 +3932,7 @@ int sensor_tcal_heated_start(float target_temp)
 	    target_temp > (float)CONFIG_SENSOR_POLY_TEMP_MAX ||
 	    target_temp > (float)CONFIG_SENSOR_TCAL_HEATED_MAX_TEMP_C) {
 		tcal_heated.stop_reason = TCAL_HEATED_STOP_START_FAILED;
+		tcal_heated_signal_stop_led(TCAL_HEATED_STOP_START_FAILED);
 		return -ERANGE;
 	}
 
@@ -3884,6 +3940,7 @@ int sensor_tcal_heated_start(float target_temp)
 	int err = tcal_heated_validate_start(&current_temp);
 	if (err) {
 		tcal_heated.stop_reason = TCAL_HEATED_STOP_START_FAILED;
+		tcal_heated_signal_stop_led(TCAL_HEATED_STOP_START_FAILED);
 		return err;
 	}
 
@@ -3921,6 +3978,7 @@ int sensor_tcal_heated_start(float target_temp)
 		(double)tcal_heated.ki,
 		(double)tcal_heated.kff
 	);
+	tcal_heated_update_led();
 	return 0;
 }
 
@@ -3946,12 +4004,14 @@ int sensor_tcal_heated_set_open_loop_duty(uint16_t duty_pptt)
 	int err = tcal_heated_validate_start(&current_temp);
 	if (err) {
 		tcal_heated.stop_reason = TCAL_HEATED_STOP_START_FAILED;
+		tcal_heated_signal_stop_led(TCAL_HEATED_STOP_START_FAILED);
 		return err;
 	}
 
 	err = heater_set_duty_pptt(duty_pptt);
 	if (err) {
 		tcal_heated.stop_reason = TCAL_HEATED_STOP_HEATER_ERROR;
+		tcal_heated_signal_stop_led(TCAL_HEATED_STOP_HEATER_ERROR);
 		return err;
 	}
 
@@ -3972,6 +4032,7 @@ int sensor_tcal_heated_set_open_loop_duty(uint16_t duty_pptt)
 	tcal_heated.last_temp = current_temp;
 	tcal_heated.last_control_time = now;
 	tcal_heated.duty_pptt = MIN(duty_pptt, CONFIG_SYSTEM_IMU_HEATER_MAX_DUTY_PPTT);
+	tcal_heated_update_led();
 	return 0;
 }
 
@@ -4091,6 +4152,8 @@ void sensor_tcal_heated_update(bool is_resting)
 		}
 	}
 
+	tcal_heated_update_led();
+
 	int64_t dt_ms = now - tcal_heated.last_control_time;
 	if (dt_ms < 1000) {
 		return;
@@ -4134,6 +4197,8 @@ void sensor_tcal_heated_update(bool is_resting)
 	} else {
 		tcal_heated.stable_start_time = 0;
 	}
+
+	tcal_heated_update_led();
 
 	float error = tcal_heated.setpoint_temp - current_temp;
 	float ff_out = tcal_heated.kff * MAX(tcal_heated.setpoint_temp - tcal_heated.ambient_temp, 0.0f);
