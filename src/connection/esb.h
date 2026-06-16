@@ -108,6 +108,7 @@ void esb_write(uint8_t *data, bool no_ack, size_t data_length); // TODO: give pa
 #define ESB_PONG_FLAG_DFU_OTA 0x21       // Enter OTA DFU bootloader
 #define ESB_PONG_FLAG_DATA_COLLECT_ON 0x22  // Start raw data collection
 #define ESB_PONG_FLAG_DATA_COLLECT_OFF 0x23 // Stop raw data collection
+#define ESB_PONG_FLAG_SENS_AUTO 0x24        // Auto-calibrate gyro sensitivity
 #define ESB_PONG_FLAG_OTA_QUERY_INFO 0x30   // Request firmware info for ESB OTA
 #define ESB_PONG_FLAG_OTA_ABORT 0x31        // Abort ESB OTA update
 #define ESB_PONG_FLAG_OTA_SUPPRESS 0x32     // Suppress tracker during OTA (reduce poll rate)
@@ -117,6 +118,15 @@ void esb_write(uint8_t *data, bool no_ack, size_t data_length); // TODO: give pa
 #define ESB_RAW_IMU_TYPE    0x10  // Raw IMU data (float, with piggybacked mag)
 #define ESB_RAW_MAG_TYPE    0x11  // Raw magnetometer data (float, reserved)
 #define ESB_RAW_META_TYPE   0x12  // Metadata (ODR, range, sensor IDs - sent once)
+#define ESB_RAW_IMU_QUAT_TYPE 0x13  // Raw IMU with gyrQuat (52 bytes, packet-loss resistant)
+#define ESB_RAW_CAL_TYPE    0x14  // Extended calibration metadata (sub-typed)
+
+// ESB_RAW_CAL_TYPE sub-types (byte[2] of 0x14 packet)
+#define RAW_CAL_SUB_ACCEL   0x01  // Accel calibration: accBAinv[4][3] (48 bytes)
+#define RAW_CAL_SUB_MAG     0x02  // Mag calibration: magBAinv[4][3] (48 bytes)
+#define RAW_CAL_SUB_GYRO    0x03  // Gyro cal: gyroBias[3] + gyroSensScale[3] (24 bytes)
+#define RAW_CAL_SUB_TCAL    0x04  // T-Cal state: enabled, count, temp range, correction offset
+#define RAW_CAL_SUB_TCAL_POINTS 0x05  // T-Cal raw points (chunked, 2 per packet)
 
 // ESB OTA packet types (used during firmware update over ESB)
 #define ESB_OTA_DATA_TYPE       0x20  // OTA firmware data (receiver → tracker)
