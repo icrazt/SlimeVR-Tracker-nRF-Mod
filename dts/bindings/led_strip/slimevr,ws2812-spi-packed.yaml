@@ -1,0 +1,29 @@
+# Copyright (c) 2026
+# SPDX-License-Identifier: Apache-2.0
+
+description: |
+  SlimeVR WS2812 LED strip SPI driver with packed symbols.
+
+  This binding is intended for nRF52 SPIM instances that only support 8-bit SPI
+  words and fixed 4/8 MHz clock steps. The driver packs multiple SPI bits into a
+  continuous byte stream, allowing 5-bit WS2812 symbols at 4 MHz.
+
+compatible: "slimevr,ws2812-spi-packed"
+
+include: [spi-device.yaml, ws2812.yaml]
+
+properties:
+  bits-per-symbol:
+    type: int
+    required: true
+    description: Number of SPI bits used to encode one WS2812 data bit.
+
+  spi-one-frame:
+    type: int
+    required: true
+    description: Symbol bits to shift out for a WS2812 1 bit.
+
+  spi-zero-frame:
+    type: int
+    required: true
+    description: Symbol bits to shift out for a WS2812 0 bit.
