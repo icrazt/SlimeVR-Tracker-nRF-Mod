@@ -78,6 +78,7 @@ static const struct pwm_dt_spec pwm_led2 = PWM_DT_SPEC_GET(DT_ALIAS(pwm_led2));
 
 static enum sys_led_pattern current_led_pattern;
 static int current_priority;
+static bool led_output_active;
 
 #if LED_EXISTS || LED_STRIP_EXISTS
 static enum sys_led_pattern led_patterns[SYS_LED_PATTERN_DEPTH]
@@ -132,22 +133,38 @@ static void led_pin_reset(void)
 #endif
 }
 
+#ifdef LED_STRIP_EXISTS
+static void led_strip_clear(void)
+{
+	static struct led_rgb pixels[DT_PROP(STRIP_NODE, chain_length)];
+	int ret = led_strip_update_rgb(strip, pixels, DT_PROP(STRIP_NODE, chain_length));
+
+	if (ret) {
+		LOG_WRN("Failed to clear LED strip: %d", ret);
+	}
+}
+#endif
+
 static void led_suspend(void)
 {
 	LOG_DBG("led_suspend");
+	if (led_output_active) {
 #ifdef LED_STRIP_EXISTS
-	pm_device_action_run(strip, PM_DEVICE_ACTION_SUSPEND);
+		led_strip_clear();
+		pm_device_action_run(strip, PM_DEVICE_ACTION_SUSPEND);
 #endif
 #ifdef PWM_LED_EXISTS
-	pm_device_action_run(pwm_led.dev, PM_DEVICE_ACTION_SUSPEND);
+		pm_device_action_run(pwm_led.dev, PM_DEVICE_ACTION_SUSPEND);
 #endif
 #ifdef PWM_LED1_EXISTS
-	pm_device_action_run(pwm_led1.dev, PM_DEVICE_ACTION_SUSPEND);
+		pm_device_action_run(pwm_led1.dev, PM_DEVICE_ACTION_SUSPEND);
 #endif
 #ifdef PWM_LED2_EXISTS
-	pm_device_action_run(pwm_led2.dev, PM_DEVICE_ACTION_SUSPEND);
+		pm_device_action_run(pwm_led2.dev, PM_DEVICE_ACTION_SUSPEND);
 #endif
-	led_pin_reset();
+		led_pin_reset();
+		led_output_active = false;
+	}
 	// disable power
 #if LED_EN_EXISTS
 	gpio_pin_configure_dt(&led_en, GPIO_OUTPUT);
@@ -176,6 +193,7 @@ static void led_resume(void)
 	pm_device_action_run(pwm_led2.dev, PM_DEVICE_ACTION_RESUME);
 #endif
 	led_pin_init();
+	led_output_active = true;
 }
 
 #ifdef LED_STRIP_EXISTS
