@@ -82,6 +82,25 @@ config LED_DEFAULT_COLOR_B
 
 endmenu
 
+menu "Status LED pulse pattern"
+
+config LED_PULSE_PERIOD_MS
+    int "Pulse period in milliseconds"
+    range 100 60000
+    default 5000
+    help
+        Full period for the persistent charging pulse LED pattern.
+
+config LED_PULSE_UPDATE_MS
+    int "Pulse update interval in milliseconds"
+    range 1 1000
+    default 20
+    help
+        Update interval for the persistent charging pulse LED pattern.
+        The default 20 ms interval refreshes the LED at 50 Hz.
+
+endmenu
+
 config USER_EXTRA_ACTIONS
     bool "Multiple press actions"
     help

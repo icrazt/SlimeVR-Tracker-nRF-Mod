@@ -67,6 +67,15 @@ enum sys_led_color {
 	SYS_LED_COLOR_PAIRING,
 };
 
-void set_led(enum sys_led_pattern led_pattern, int priority);
+void set_led_with_context(
+	enum sys_led_pattern led_pattern,
+	int priority,
+	const char *source_file,
+	int source_line,
+	const char *source_func
+);
+
+#define set_led(led_pattern, priority)                                                             \
+	set_led_with_context((led_pattern), (priority), __FILE__, __LINE__, __func__)
 
 #endif
