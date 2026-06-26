@@ -151,11 +151,11 @@
 		LED_COLOR_ID_RED
 		LED_COLOR_ID_BLUE>;
 	out-active-low;
-	reset-delay = <2000>; // Pads the one-pixel I2S transfer so DRAIN wins the nrfx underrun race.
-	lrck-period = <10>;
-	nibble-one = <0x0e>;
-	nibble-zero = <0x08>;
-	extra-wait-time = <300>;
+	reset-delay = <100>; // XL-2121RGBC-WS2812B data sheet specifies, > 80us reset delay, so 100us is a safe value
+	// lrck-period = <10>;
+	// nibble-one = <0x0e>;
+	// nibble-zero = <0x08>;
+	// extra-wait-time = <300>;
 	};
 };
 
