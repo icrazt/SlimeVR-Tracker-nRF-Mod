@@ -144,7 +144,7 @@
 	pinctrl-names = "default", "sleep";
 
 	led_strip: ws2812@0 {
-	compatible = "worldsemi,ws2812-i2s";
+	compatible = "crazt,ws2812-i2s";
 	reg = <0>;
 	chain-length = <1>;
 	color-mapping = <LED_COLOR_ID_GREEN
