@@ -155,6 +155,17 @@ config BLOCK_WOM_WHILE_PLUGGED
         Keep the firmware running while a charger, USB VBUS, or inferred
         external power is present instead of entering IMU wake-on-motion mode.
 
+config CHARGING_IDLE_DIM_DELAY_MS
+    int "Charging idle dim delay (ms)"
+    range 0 2147483647
+    default ACTIVE_TIMEOUT_DELAY if USE_ACTIVE_TIMEOUT
+    default 1800000
+    depends on BLOCK_WOM_WHILE_PLUGGED
+    help
+        Delay before switching the charging LED effect to the dim idle pattern
+        while external power is present. Defaults to the active timeout delay
+        when active timeout support is enabled.
+
 config CONNECTION_TIMEOUT_DELAY
     int "Connection timeout delay (ms)"
     default 300000

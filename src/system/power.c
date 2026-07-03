@@ -728,6 +728,9 @@ static void power_thread(void)
 	static int last_battery_mV = 0;
 	static int last_plug_gpio_value = -1;
 	static enum sys_led_pattern last_system_led_pattern = SYS_LED_PATTERN_OFF;
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+	static int64_t external_power_since_ms = -1;
+#endif
 
 	/* Register power thread with watchdog (watchdog is initialized via SYS_INIT) */
 	if (!watchdog_registered) {
@@ -827,11 +830,21 @@ static void power_thread(void)
 			&& (average_pptt >= 0 ? average_pptt : battery_pptt) == 0;
 #if CONFIG_BLOCK_WOM_WHILE_PLUGGED
 		bool external_power_present = raw_device_plugged || device_plugged;
-		if (wom_blocked_by_external_power && !external_power_present) {
-			wom_blocked_by_external_power = false;
-			LOG_INF("Charging idle dim LED cleared: external power removed");
+		if (external_power_present) {
+			if (external_power_since_ms < 0) {
+				external_power_since_ms = now_ms;
+			}
+		} else {
+			external_power_since_ms = -1;
+			if (wom_blocked_by_external_power) {
+				wom_blocked_by_external_power = false;
+				LOG_INF("Charging idle dim LED cleared: external power removed");
+			}
 		}
-		bool charging_idle_dim = wom_blocked_by_external_power && external_power_present;
+		bool charging_idle_timeout = external_power_since_ms >= 0
+			&& now_ms - external_power_since_ms >= CONFIG_CHARGING_IDLE_DIM_DELAY_MS;
+		bool charging_idle_dim = external_power_present
+			&& (wom_blocked_by_external_power || charging_idle_timeout);
 #endif
 
 		device_charged = charged; // TODO: timer on device_plugged could be used to infer charged state
