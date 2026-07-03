@@ -91,12 +91,29 @@ static const char *power_led_pattern_name(enum sys_led_pattern pattern)
 		return "LONG_PERSIST";
 	case SYS_LED_PATTERN_PULSE_PERSIST:
 		return "PULSE_PERSIST";
+	case SYS_LED_PATTERN_PULSE_PERSIST_DIM:
+		return "PULSE_PERSIST_DIM";
 	case SYS_LED_PATTERN_ACTIVE_PERSIST:
 		return "ACTIVE_PERSIST";
 	default:
 		return "OTHER";
 	}
 }
+
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+static bool wom_blocked_by_external_power = false;
+
+static bool sys_external_power_present(void)
+{
+#ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
+	bool usb_plugged = (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+#else
+	bool usb_plugged = false;
+#endif
+
+	return chg_read() || stby_read() || plugged || device_plugged || usb_plugged;
+}
+#endif
 
 #if DT_NODE_HAS_PROP(ZEPHYR_USER_NODE, int0_gpios)
 #define IMU_INT_EXISTS true
@@ -405,6 +422,13 @@ static void sys_WOM(bool force) // TODO: if IMU interrupt does not exist what do
 		LOG_INF("IMU wake up blocked by OTA");
 		return;
 	}
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+	if (sys_external_power_present()) {
+		wom_blocked_by_external_power = true;
+		LOG_INF("IMU wake up blocked by external power");
+		return;
+	}
+#endif
 #if IMU_INT_EXISTS
 #if CONFIG_DELAY_SLEEP_ON_STATUS
 	if (!force && (!esb_ready() || !status_ready())) // Wait for esb to pair in case the user is still trying to pair the device
@@ -795,6 +819,14 @@ static void power_thread(void)
 			|| now_ms - last_plug_signal_change_ms < BATTERY_PLUG_SETTLE_MS;
 		bool battery_discharged = !plug_signal_settling && battery_available
 			&& (average_pptt >= 0 ? average_pptt : battery_pptt) == 0;
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+		bool external_power_present = raw_device_plugged || device_plugged;
+		if (wom_blocked_by_external_power && !external_power_present) {
+			wom_blocked_by_external_power = false;
+			LOG_INF("Charging idle dim LED cleared: external power removed");
+		}
+		bool charging_idle_dim = wom_blocked_by_external_power && external_power_present;
+#endif
 
 		device_charged = charged; // TODO: timer on device_plugged could be used to infer charged state
 
@@ -893,6 +925,12 @@ static void power_thread(void)
 		enum sys_led_pattern system_led_pattern;
 		const char *system_led_reason;
 
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+		if (charging_idle_dim) {
+			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST_DIM;
+			system_led_reason = "charging-idle";
+		} else
+#endif
 		if (charging) {
 			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST;
 			system_led_reason = "charging";

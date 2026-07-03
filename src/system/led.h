@@ -55,6 +55,7 @@ enum sys_led_pattern {
 	SYS_LED_PATTERN_ON_PERSIST,     // 20% duty cycle									// Success | indicates charged
 	SYS_LED_PATTERN_LONG_PERSIST,   // 20% duty cycle, 500ms on 500ms off				// Charging| indicates low battery
 	SYS_LED_PATTERN_PULSE_PERSIST,  // 5000ms pulsing								// Charging| indicates charging
+	SYS_LED_PATTERN_PULSE_PERSIST_DIM, // 5000ms pulsing, low brightness				// Charging| indicates idle charging
 	SYS_LED_PATTERN_ACTIVE_PERSIST, // 300ms on 9700ms off							// Default | indicates normal
 									// operation
 

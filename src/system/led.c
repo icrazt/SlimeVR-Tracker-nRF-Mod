@@ -147,6 +147,8 @@ static const char *led_pattern_name(enum sys_led_pattern pattern)
 		return "LONG_PERSIST";
 	case SYS_LED_PATTERN_PULSE_PERSIST:
 		return "PULSE_PERSIST";
+	case SYS_LED_PATTERN_PULSE_PERSIST_DIM:
+		return "PULSE_PERSIST_DIM";
 	case SYS_LED_PATTERN_ACTIVE_PERSIST:
 		return "ACTIVE_PERSIST";
 	case SYS_LED_PATTERN_ERROR_A:
@@ -828,6 +830,26 @@ static int led_breathe_value_pptt(int pattern_state)
 
 	return led_value;
 }
+
+static int led_brightness_for_effective_pptt(int effective_pptt)
+{
+#if CONFIG_LED_GLOBAL_BRIGHTNESS_PPTT == 0
+	return 0;
+#else
+	int brightness_pptt;
+
+	if (effective_pptt <= 0) {
+		return 0;
+	}
+	brightness_pptt = (effective_pptt * 10000 + CONFIG_LED_GLOBAL_BRIGHTNESS_PPTT - 1)
+		/ CONFIG_LED_GLOBAL_BRIGHTNESS_PPTT;
+	if (brightness_pptt > 10000) {
+		return 10000;
+	}
+
+	return brightness_pptt;
+#endif
+}
 #endif
 
 void set_led(enum sys_led_pattern led_pattern, int priority)
@@ -997,6 +1019,17 @@ static void led_thread(void)
 			led_pin_set(
 				led_effective_color(SYS_LED_COLOR_CHARGING),
 				10000,
+				led_breathe_value_pptt(led_pattern_state)
+			);
+			k_msleep(5);
+			break;
+		case SYS_LED_PATTERN_PULSE_PERSIST_DIM:
+			led_pattern_state = (led_pattern_state + 1) % 1000;
+			led_pin_set(
+				led_effective_color(SYS_LED_COLOR_CHARGING),
+				led_brightness_for_effective_pptt(
+					CONFIG_CHARGING_IDLE_LED_EFFECTIVE_BRIGHTNESS_PPTT
+				),
 				led_breathe_value_pptt(led_pattern_state)
 			);
 			k_msleep(5);

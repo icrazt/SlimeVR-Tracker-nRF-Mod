@@ -104,9 +104,10 @@ void configure_sense_pins(void)
 #endif
 	// Configure chgstat sense
 	if (!docked) {
-		bool ignore_charge_wake = IGNORE_CHARGE_WAKE_ON_VBUS && vbus_read();
+		bool ignore_charge_wake = IGNORE_CHARGE_WAKE_ON_VBUS
+			&& (chg_read() || stby_read() || vbus_read());
 		if (ignore_charge_wake) {
-			LOG_INF("Skipped charge wake sense while VBUS is present");
+			LOG_INF("Skipped charge wake sense while externally powered");
 		}
 #if CHG_EXISTS
 		if (!ignore_charge_wake) {

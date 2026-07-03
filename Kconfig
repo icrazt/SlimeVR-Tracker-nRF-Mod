@@ -58,6 +58,14 @@ config LED_GLOBAL_BRIGHTNESS_PPTT
         Scale LED output brightness in parts per ten-thousand.
         10000 is full brightness, 2500 is 25%.
 
+config CHARGING_IDLE_LED_EFFECTIVE_BRIGHTNESS_PPTT
+    int "Charging idle LED effective brightness (pptt)"
+    range 0 10000
+    default 300
+    help
+        Target peak brightness for the dim charging idle LED after global
+        brightness scaling. 300 is 3% of full brightness.
+
 menu "Status LED default status color"
     depends on LED_RGB_COLOR
 
@@ -115,9 +123,10 @@ config IGNORE_CHARGE_WAKE_ON_VBUS
     default n
     depends on USER_SHUTDOWN
     help
-        When VBUS is present, do not configure charge status pins as wake
-        sources during system shutdown. This keeps charge state transitions
-        from waking the device while USB power is already connected.
+        When VBUS or a charge status pin indicates external power is present,
+        do not configure charge status pins as wake sources during system
+        shutdown. This keeps charge state transitions from waking the device
+        while it is already charging.
 
 config USE_IMU_WAKE_UP
     bool "IMU wake up support"
@@ -137,6 +146,14 @@ config WOM_USE_DCDC
     depends on USE_IMU_WAKE_UP
     help
         Use DCDC instead of LDO in IMU wake up state if it is more efficient.
+
+config BLOCK_WOM_WHILE_PLUGGED
+    bool "Block IMU wake up mode while externally powered"
+    default n
+    depends on USE_IMU_WAKE_UP
+    help
+        Keep the firmware running while a charger, USB VBUS, or inferred
+        external power is present instead of entering IMU wake-on-motion mode.
 
 config CONNECTION_TIMEOUT_DELAY
     int "Connection timeout delay (ms)"

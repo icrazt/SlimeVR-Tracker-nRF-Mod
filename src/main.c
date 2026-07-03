@@ -157,12 +157,22 @@ int main(void)
 	bool charged = stby_read();
 	LOG_INF("Main: startup power check before vin_read chg=%d stby=%d", charging, charged);
 	bool plugged = vin_read();
-	LOG_INF("Main: startup power state chg=%d stby=%d plugged=%d",
-		charging, charged, plugged);
+	bool usb_plugged = vbus_read();
+	bool externally_powered = charging || charged || plugged || usb_plugged;
+	LOG_INF("Main: startup power state chg=%d stby=%d plugged=%d usb=%d external=%d",
+		charging, charged, plugged, usb_plugged, externally_powered);
 
-	if (reset_mode == 0 && !booting_from_shutdown && !charging && !charged
-		&& !plugged) { // Reset mode user shutdown, only if unplugged and undocked
+	if (reset_mode == 0 && !booting_from_shutdown && !externally_powered) {
+		// Reset mode user shutdown, only if unplugged and undocked.
 		sys_user_shutdown();
+	}
+
+	if (externally_powered) {
+		set_led(
+			charged ? SYS_LED_PATTERN_ON_PERSIST : SYS_LED_PATTERN_PULSE_PERSIST,
+			SYS_LED_PRIORITY_SYSTEM
+		);
+		set_led(SYS_LED_PATTERN_OFF, SYS_LED_PRIORITY_HIGHEST);
 	}
 #endif
 
