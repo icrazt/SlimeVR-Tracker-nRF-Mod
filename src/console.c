@@ -517,6 +517,7 @@ static void print_help(void)
 	printk("  info                       Get device information\n");
 	printk("  uptime                     Get device uptime\n");
 	printk("  battery                    Get battery information\n");
+	printk("  power                      Get power/charge diagnostic state\n");
 	printk("\n");
 	printk("Sensor Management:\n");
 	printk("  scan                       Restart sensor scan\n");
@@ -845,6 +846,7 @@ static void console_thread(void)
 	const char command_shutdown[] = "shutdown";
 	const char command_reboot[] = "reboot";
 	const char command_battery[] = "battery";
+	const char command_power[] = "power";
 	const char command_scan[] = "scan";
 	const char command_calibrate[] = "calibrate";
 	const char command_help[] = "help";
@@ -930,6 +932,8 @@ static void console_thread(void)
 			sys_request_system_reboot(false);
 		} else if (strcmp(argv[0], command_battery) == 0) {
 			print_battery_tracker();
+		} else if (strcmp(argv[0], command_power) == 0) {
+			sys_print_power_diag();
 		} else if (strcmp(argv[0], command_scan) == 0) {
 			sensor_request_scan(true);
 		} else if (strcmp(argv[0], command_calibrate) == 0) {

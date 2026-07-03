@@ -10,5 +10,6 @@ void sys_request_system_reboot(bool);
 
 bool vin_read(void);
 bool vbus_read(void);
+void sys_print_power_diag(void);
 
 #endif

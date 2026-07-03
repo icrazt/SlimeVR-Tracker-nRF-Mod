@@ -19,6 +19,7 @@
 #include <hal/nrf_power.h>
 #include <zephyr/pm/device.h>
 #include <zephyr/device.h>
+#include <zephyr/sys/printk.h>
 #include <hal/nrf_spim.h>
 #include <hal/nrf_twim.h>
 #include <zephyr/drivers/clock_control/nrf_clock_control.h>
@@ -63,6 +64,7 @@ static void sys_system_off(void);
 static void sys_system_reboot(void);
 
 static int sys_power_state_request(int id);
+static bool battery_pptt_is_valid(int16_t battery_pptt);
 
 static void disable_DFU_thread(void);
 K_THREAD_DEFINE(disable_DFU_thread_id, 128, disable_DFU_thread, NULL, NULL, NULL, 6, 0, 500); // disable DFU if the system is running correctly
@@ -582,6 +584,89 @@ bool vbus_read(void)
 #endif
 }
 
+void sys_print_power_diag(void)
+{
+	bool docked = dock_read();
+	bool charging = chg_read();
+	bool charged = stby_read();
+	int plug_gpio_value = -1;
+	int plug_gpio_raw = -1;
+	int plug_gpio_config_rc = -1;
+	bool plug_gpio_ready = false;
+	int battery_mV = 0;
+	int16_t battery_pptt = read_batt_mV(&battery_mV);
+	bool battery_pptt_valid = battery_pptt_is_valid(battery_pptt);
+#ifdef POWER_USBREGSTATUS_VBUSDETECT_Msk
+	bool usb_plugged = (NRF_POWER->USBREGSTATUS & POWER_USBREGSTATUS_VBUSDETECT_Msk) != 0;
+#else
+	bool usb_plugged = false;
+#endif
+	bool raw_device_plugged = charging || charged || plugged || usb_plugged;
+	bool plug_signal_settling = k_uptime_get() - last_plug_signal_change_ms < BATTERY_PLUG_SETTLE_MS;
+
+#ifdef PLUG_EXISTS
+	plug_gpio_ready = device_is_ready(plug_gpio.port);
+	if (plug_gpio_ready) {
+		plug_gpio_config_rc = gpio_pin_configure_dt(&plug_gpio, GPIO_INPUT);
+		plug_gpio_value = gpio_pin_get_dt(&plug_gpio);
+		plug_gpio_raw = gpio_pin_get_raw(plug_gpio.port, plug_gpio.pin);
+	}
+#endif
+
+	printk(
+		"Power diag: batt=%d mV pptt=%d valid=%d chg=%d stby=%d plug_gpio=%d "
+		"inferred_plug=%d usb=%d raw_plug=%d dev_plug=%d dev_charged=%d "
+		"settle=%d low=%d dock=%d power_init=%d\n",
+		battery_mV,
+		battery_pptt,
+		battery_pptt_valid,
+		charging,
+		charged,
+		plug_gpio_value,
+		plugged,
+		usb_plugged,
+		raw_device_plugged,
+		device_plugged,
+		device_charged,
+		plug_signal_settling,
+		battery_low,
+		docked,
+		power_init
+	);
+#ifdef PLUG_EXISTS
+	printk(
+		"Power diag pins: plug_gpio=%s pin=%u logical=%d raw=%d ready=%d configure_rc=%d\n",
+		plug_gpio.port->name,
+		plug_gpio.pin,
+		plug_gpio_value,
+		plug_gpio_raw,
+		plug_gpio_ready,
+		plug_gpio_config_rc
+	);
+#else
+	printk("Power diag pins: plug_gpio not defined\n");
+#endif
+	LOG_INF(
+		"Power diag manual: batt=%d mV pptt=%d valid=%d chg=%d stby=%d plug_gpio=%d raw=%d inferred_plug=%d usb=%d raw_plug=%d dev_plug=%d dev_charged=%d settle=%d low=%d dock=%d power_init=%d",
+		battery_mV,
+		battery_pptt,
+		battery_pptt_valid,
+		charging,
+		charged,
+		plug_gpio_value,
+		plug_gpio_raw,
+		plugged,
+		usb_plugged,
+		raw_device_plugged,
+		device_plugged,
+		device_charged,
+		plug_signal_settling,
+		battery_low,
+		docked,
+		power_init
+	);
+}
+
 static void disable_DFU_thread(void)
 {
 #if ADAFRUIT_BOOTLOADER
@@ -944,18 +1029,17 @@ static void power_thread(void)
 		enum sys_led_pattern system_led_pattern;
 		const char *system_led_reason;
 
-#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
-		if (charging_idle_dim) {
-			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST_DIM;
-			system_led_reason = "charging-idle";
-		} else
-#endif
-		if (charging) {
-			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST;
-			system_led_reason = "charging";
-		} else if (charged) {
+		if (charged) {
 			system_led_pattern = SYS_LED_PATTERN_ON_PERSIST;
 			system_led_reason = "charged";
+#if CONFIG_BLOCK_WOM_WHILE_PLUGGED
+		} else if (charging_idle_dim) {
+			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST_DIM;
+			system_led_reason = "charging-idle";
+#endif
+		} else if (charging) {
+			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST;
+			system_led_reason = "charging";
 		} else if (plugged || usb_plugged) {
 			system_led_pattern = SYS_LED_PATTERN_PULSE_PERSIST;
 			system_led_reason = plugged ? "inferred-plugged" : "usb-plugged";
